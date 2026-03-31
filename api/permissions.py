@@ -65,6 +65,57 @@ class PermissionChecker:
             )
 
     @staticmethod
+    def check_can_bind_funcionario(user: models.User, funcionario_id: int, db: Session):
+        """
+        Check if the user can bind a specific official to a user account.
+
+        Non-admin users are restricted to their existing scope:
+        - already assigned officials
+        - hidden officials that previously belonged to their scope
+        - other contracts that share the same RUT with an assigned official
+        """
+        funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
+        if not funcionario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Funcionario not found"
+            )
+
+        if user.role == "admin":
+            return funcionario
+
+        direct_assignment = db.query(models.UserOfficial).filter(
+            models.UserOfficial.user_id == user.id,
+            models.UserOfficial.funcionario_id == funcionario_id,
+        ).first()
+        if direct_assignment:
+            return funcionario
+
+        funcionario_rut = (funcionario.rut or "").strip()
+        if funcionario_rut:
+            scoped_assignment = db.query(models.UserOfficial).join(
+                models.Funcionario,
+                models.Funcionario.id == models.UserOfficial.funcionario_id,
+            ).filter(
+                models.UserOfficial.user_id == user.id,
+                models.Funcionario.rut == funcionario_rut,
+            ).first()
+            if scoped_assignment:
+                return funcionario
+
+            hidden_assignment = db.query(models.UserHiddenOfficial).filter(
+                models.UserHiddenOfficial.user_id == user.id,
+                models.UserHiddenOfficial.funcionario_rut == funcionario_rut,
+            ).first()
+            if hidden_assignment:
+                return funcionario
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene permiso para vincular este funcionario fuera de su ámbito autorizado."
+        )
+
+    @staticmethod
     def check_can_manage_group(user: models.User, group_id: int, db: Session):
         """
         Check if the user owns the group or is admin.

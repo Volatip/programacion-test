@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
+import logging
 import pandas as pd
 import io
 from api import models, schemas, database, auth
@@ -16,6 +18,39 @@ DEFAULT_SEARCH_RESULTS_LIMIT = 100
 MAX_SEARCH_RESULTS_LIMIT = 200
 
 import json
+
+
+logger = logging.getLogger(__name__)
+
+
+def get_user_scoped_ruts(db: Session, user_id: int, *, include_hidden: bool = False) -> list[str]:
+    linked_ruts = [
+        row[0]
+        for row in db.query(models.Funcionario.rut)
+        .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)
+        .filter(models.UserOfficial.user_id == user_id)
+        .all()
+        if row[0]
+    ]
+
+    if include_hidden:
+        hidden_ruts = [
+            row[0]
+            for row in db.query(models.UserHiddenOfficial.funcionario_rut)
+            .filter(models.UserHiddenOfficial.user_id == user_id)
+            .all()
+            if row[0]
+        ]
+        return list(dict.fromkeys([*linked_ruts, *hidden_ruts]))
+
+    hidden_ruts = {
+        row[0]
+        for row in db.query(models.UserHiddenOfficial.funcionario_rut)
+        .filter(models.UserHiddenOfficial.user_id == user_id)
+        .all()
+        if row[0]
+    }
+    return [rut for rut in linked_ruts if rut not in hidden_ruts]
 
 @router.post("/upload")
 async def upload_funcionarios(
@@ -46,8 +81,7 @@ async def upload_funcionarios(
         # Replace NaN with None
         df = df.where(pd.notnull(df), None)
         
-        # DEBUG: Print columns and first rows
-        print(f"DEBUG: Excel Columns found: {df.columns.tolist()}")
+        logger.info("Procesando carga de funcionarios con columnas: %s", df.columns.tolist())
         
         # Helper to find column
         def find_col(keywords, default=None):
@@ -80,8 +114,8 @@ async def upload_funcionarios(
                         raw_data_dict[k] = str(v)
                 
                 raw_data_json = json.dumps(raw_data_dict, ensure_ascii=False)
-            except Exception as e:
-                print(f"Warning: Could not serialize row {idx} to JSON: {e}")
+            except Exception:
+                logger.warning("No se pudo serializar la fila %s de funcionarios a JSON", idx, exc_info=True)
                 raw_data_json = None
 
             # Find RUT column
@@ -93,7 +127,7 @@ async def upload_funcionarios(
                  col_rut = find_col(['rut', 'r.u.t', 'run'])
             
             if not col_rut:
-                print("DEBUG: No RUT column found")
+                logger.warning("Se abortó la carga de funcionarios porque no se encontró una columna de RUT válida")
                 break
                 
             rut_raw = str(row.get(col_rut, '')).replace('.', '').strip()
@@ -295,8 +329,8 @@ async def upload_funcionarios(
             "registros_actualizados": updated_count
         }
 
-    except Exception as e:
-        print(f"Error processing upload: {e}")
+    except Exception:
+        logger.exception("Error procesando carga de funcionarios")
         raise HTTPException(status_code=500, detail="Error processing file")
 
 def format_hours_list(hours_list):
@@ -553,12 +587,7 @@ def read_funcionarios(
         rut_to_group = {r[0]: r[1] for r in linked_officials}
         
         # Filter hidden officials
-        hidden_ruts = db.query(models.UserHiddenOfficial.funcionario_rut).filter(
-            models.UserHiddenOfficial.user_id == effective_user_id
-        ).all()
-        hidden_ruts_list = [h[0] for h in hidden_ruts]
-        
-        linked_ruts = [r for r in linked_ruts if r not in hidden_ruts_list]
+        linked_ruts = get_user_scoped_ruts(db, effective_user_id)
         
         if not linked_ruts:
              return []
@@ -603,7 +632,14 @@ def read_funcionarios(
         # Logging for audit
         if len(consolidated) > 0:
             scheduled_count = sum(1 for c in consolidated if c['is_scheduled'])
-            print(f"[AUDIT] read_funcionarios (user filtered): Total={len(consolidated)}, Scheduled={scheduled_count}, Unscheduled={len(consolidated)-scheduled_count}, Period={period_id}, User={effective_user_id}")
+            logger.info(
+                "read_funcionarios user_filtered total=%s scheduled=%s unscheduled=%s period_id=%s user_id=%s",
+                len(consolidated),
+                scheduled_count,
+                len(consolidated) - scheduled_count,
+                period_id,
+                effective_user_id,
+            )
         
         return consolidated[start:end]
     
@@ -692,7 +728,13 @@ def search_funcionarios(
 
     # Audit Log for Access (Implicit via request logging, but explicitly logging search context here)
     if effective_user_id is not None:
-        print(f"[AUDIT] Search Access: User {effective_user_id} (Role: {user_role}), Query: '{q}', Mode: {search_mode}")
+        logger.info(
+            "search_funcionarios access user_id=%s role=%s mode=%s query=%r",
+            effective_user_id,
+            user_role,
+            search_mode,
+            q,
+        )
 
     # Case 1: Search within Linked Officials (Local Scope)
     if effective_user_id is not None and search_mode == 'local':
@@ -700,17 +742,9 @@ def search_funcionarios(
         linked_officials = db.query(models.Funcionario.rut, models.UserOfficial.group_id)\
             .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)\
             .filter(models.UserOfficial.user_id == effective_user_id).all()
-            
-        linked_ruts = [r[0] for r in linked_officials]
+
+        linked_ruts = get_user_scoped_ruts(db, effective_user_id)
         rut_to_group = {r[0]: r[1] for r in linked_officials}
-        
-        # Filter hidden officials
-        hidden_ruts = db.query(models.UserHiddenOfficial.funcionario_rut).filter(
-            models.UserHiddenOfficial.user_id == effective_user_id
-        ).all()
-        hidden_ruts_list = [h[0] for h in hidden_ruts]
-        
-        linked_ruts = [r for r in linked_ruts if r not in hidden_ruts_list]
         
         if not linked_ruts:
              return []
@@ -744,6 +778,12 @@ def search_funcionarios(
     # This is used by "Nuevo Funcionario" modal
     
     query = db.query(models.Funcionario).filter(final_search_condition)
+
+    if user_role != 'admin' and effective_user_id is not None:
+        scoped_ruts = get_user_scoped_ruts(db, effective_user_id, include_hidden=True)
+        if not scoped_ruts:
+            return []
+        query = query.filter(models.Funcionario.rut.in_(scoped_ruts))
     
     if period_id:
         query = query.filter(models.Funcionario.period_id == period_id)
@@ -769,6 +809,7 @@ def bind_funcionario_to_user(
 ):
     payload = payload or {}
     user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id"))
+    PermissionChecker.check_can_bind_funcionario(current_user, funcionario_id, db)
         
     # Check if already bound
     exists = db.query(models.UserOfficial).filter(
@@ -791,7 +832,11 @@ def bind_funcionario_to_user(
         
     new_bind = models.UserOfficial(user_id=user_id, funcionario_id=funcionario_id)
     db.add(new_bind)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return {"message": "Already bound"}
     return {"message": "Bound successfully"}
 
 @router.delete("/{funcionario_id}/bind")
@@ -931,7 +976,14 @@ def dismiss_funcionario(
     )
     db.add(audit)
     
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe un ocultamiento registrado para ese usuario y funcionario.",
+        )
     
     return {"message": f"Funcionario processed: {action}"}
 

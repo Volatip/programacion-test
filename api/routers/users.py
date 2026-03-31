@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
@@ -7,11 +9,13 @@ from ..permissions import PermissionChecker
 from ..limiter import limiter
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/login", response_model=schemas.Token)
 @limiter.limit("5/minute")
 def login(request: Request, user_login: schemas.UserLogin, db: Session = Depends(database.get_db)):
-    user = db.query(models.User).filter(models.User.rut == user_login.rut).first()
+    normalized_rut = auth.normalize_rut(user_login.rut)
+    user = db.query(models.User).filter(models.User.rut == normalized_rut).first()
     if not user or not auth.verify_password(user_login.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,7 +67,7 @@ def refresh_token(request: Request, refresh_data: schemas.TokenRefresh, db: Sess
         data={"sub": user.rut}, expires_delta=refresh_token_expires
     )
 
-    db.add(models.RevokedToken(token=refresh_data.refresh_token))
+    auth.revoke_token(db, refresh_data.refresh_token)
     db.commit()
     
     return {
@@ -83,9 +87,9 @@ def logout(
     """
     Blacklist the current token.
     """
-    db.add(models.RevokedToken(token=token))
+    auth.revoke_token(db, token)
     if logout_data and logout_data.refresh_token:
-        db.add(models.RevokedToken(token=logout_data.refresh_token))
+        auth.revoke_token(db, logout_data.refresh_token)
     db.commit()
     return {"message": "Successfully logged out"}
 
@@ -147,9 +151,9 @@ def create_user(
         db.commit()
         db.refresh(db_user)
         return db_user
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"Error creating user: {e}")
+        logger.exception("Error creating user")
         raise HTTPException(status_code=500, detail="Error creating user")
 
 @router.put("/{user_id}", response_model=schemas.UserResponse)

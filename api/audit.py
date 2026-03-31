@@ -1,9 +1,23 @@
+import logging
+from typing import Optional
+
 from sqlalchemy.orm import Session
 from . import models
 
+
+logger = logging.getLogger(__name__)
+
 class AuditLogger:
     @staticmethod
-    def log_action(db: Session, user_id: int, action: str, reason: str, funcionario_id: int = None, funcionario_name: str = None, rut: str = None):
+    def log_action(
+        db: Session,
+        user_id: int,
+        action: str,
+        reason: str,
+        funcionario_id: Optional[int] = None,
+        funcionario_name: Optional[str] = None,
+        rut: Optional[str] = None,
+    ):
         """
         Create an audit log entry.
         """
@@ -15,9 +29,9 @@ class AuditLogger:
                 user_id=user_id,
                 action=action,
                 reason=reason
-            )
+            )  # type: ignore[arg-type]
             db.add(audit)
             db.commit()
-        except Exception as e:
-            print(f"Error logging audit action '{action}': {e}")
+        except Exception:
+            logger.exception("Error logging audit action '%s'", action)
             db.rollback()

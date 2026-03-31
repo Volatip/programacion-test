@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Body
 from fastapi.responses import StreamingResponse
@@ -15,6 +16,7 @@ from .. import models, schemas, database, auth
 from ..permissions import PermissionChecker
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 PUBLIC_CONFIG_KEYS = {"header_info_text"}
 DEFAULT_CONFIG_LIST_LIMIT = 100
@@ -94,8 +96,8 @@ async def read_excel_dataframe(file: UploadFile, *, upload_name: str) -> pd.Data
     contents = await read_validated_excel_upload(file)
     try:
         return pd.read_excel(io.BytesIO(contents))
-    except Exception as e:
-        print(f"Invalid {upload_name} file format: {e}")
+    except Exception:
+        logger.warning("Archivo Excel inválido para %s", upload_name, exc_info=True)
         raise HTTPException(status_code=400, detail="Invalid file format")
 
 
@@ -310,7 +312,7 @@ async def upload_specialties(
         db.commit()
     except Exception as e:
         db.rollback()
-        print(f"Database error uploading specialties: {e}")
+        logger.exception("Database error uploading specialties for period_id=%s", period_id)
         raise HTTPException(status_code=500, detail="Database error")
         
     return {"message": f"Processed successfully. Created: {created_count}, Updated: {updated_count}"}
@@ -431,7 +433,7 @@ async def upload_performance_units(
         db.rollback()
         if "UNIQUE constraint failed" in str(e):
              raise HTTPException(status_code=400, detail="Duplicate unit found in the uploaded file")
-        print(f"Database error uploading performance units: {e}")
+        logger.exception("Database error uploading performance units for period_id=%s", period_id)
         raise HTTPException(status_code=500, detail="Database error")
         
     return {"message": f"Successfully processed {created_count} new performance units"}
@@ -515,9 +517,9 @@ async def upload_processes(
             
     try:
         db.commit()
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"Database error uploading processes: {e}")
+        logger.exception("Database error uploading processes for period_id=%s", period_id)
         raise HTTPException(status_code=500, detail="Database error")
         
     return {"message": f"Successfully processed {created_count} new processes"}
@@ -682,9 +684,9 @@ async def upload_activity_types(
             
     try:
         db.commit()
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"Database error uploading activities: {e}")
+        logger.exception("Database error uploading activities for period_id=%s", period_id)
         raise HTTPException(status_code=500, detail="Database error")
         
     return {"message": f"Successfully processed. Created {created_count} new types, updated {updated_count} existing."}

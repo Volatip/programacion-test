@@ -1,11 +1,15 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import hashlib
+import secrets
 from typing import Optional
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
-import secrets
+
 from . import schemas, database, models, runtime_config
 
 # Monkey patch for bcrypt > 4.0.0 compatibility with passlib
@@ -34,12 +38,24 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 
+def normalize_rut(rut: str) -> str:
+    cleaned_rut = "".join(char for char in rut.strip() if char not in ".- ")
+    if len(cleaned_rut) < 2:
+        return cleaned_rut.upper()
+
+    body = cleaned_rut[:-1]
+    dv = cleaned_rut[-1].upper()
+    reversed_chunks = [body[max(index - 3, 0):index] for index in range(len(body), 0, -3)]
+    formatted_body = ".".join(reversed(reversed_chunks))
+    return f"{formatted_body}-{dv}"
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire, "type": "access", "jti": secrets.token_urlsafe(16)})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -48,12 +64,20 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(days=7)
+        expire = datetime.now(timezone.utc) + timedelta(days=7)
     to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_urlsafe(16)})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def revoke_token(db: Session, token: str) -> None:
+    db.add(models.RevokedToken(token_hash=hash_token(token)))
 
 
 def get_user_from_token(token: str, db: Session, expected_type: str = "access"):
@@ -63,7 +87,17 @@ def get_user_from_token(token: str, db: Session, expected_type: str = "access"):
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    revoked = db.query(models.RevokedToken).filter(models.RevokedToken.token == token).first()
+    token_hash = hash_token(token)
+    revoked = (
+        db.query(models.RevokedToken)
+        .filter(
+            or_(
+                models.RevokedToken.token_hash == token_hash,
+                models.RevokedToken.token == token,
+            )
+        )
+        .first()
+    )
     if revoked:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

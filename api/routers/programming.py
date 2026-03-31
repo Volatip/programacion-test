@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime
+import logging
 import bleach
 
 from .. import models, schemas, database, auth
@@ -10,6 +12,7 @@ from ..audit import AuditLogger
 from ..query_bounds import normalize_limit, normalize_skip
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DEFAULT_PROGRAMMING_LIMIT = 200
 MAX_PROGRAMMING_LIMIT = 1000
@@ -131,7 +134,7 @@ def validate_programming_rules(db: Session, funcionario_id: int, data: dict):
         # Prevent medical officials from having selected_process
         if "selected_process" in data and data["selected_process"]:
              # If it's being set to something non-null/non-empty
-             print(f"WARNING: Attempt to set process for Medical official {func.name}. Clearing field.")
+             logger.warning("Clearing selected_process for medical official %s", func.name)
              data["selected_process"] = None
         
         # Ensure specialty is provided if it's being set (optional check)
@@ -240,7 +243,12 @@ def create_programming(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     user_id = current_user.id
-    print(f"DEBUG: create_programming called for Funcionario {programming.funcionario_id} by User {user_id}")
+    logger.info(
+        "create_programming called funcionario_id=%s user_id=%s period_id=%s",
+        programming.funcionario_id,
+        user_id,
+        programming.period_id,
+    )
     
     # Permission Check
     PermissionChecker.check_can_edit_programming(current_user, programming.funcionario_id, db)
@@ -263,7 +271,11 @@ def create_programming(
 
         # Strategy: Upsert (Update existing instead of creating duplicate)
         # We redirect to the update logic, but we need to adapt the schema
-        print(f"DEBUG: Duplicate programming found for Funcionario {programming.funcionario_id}, updating ID {existing.id} instead.")
+        logger.info(
+            "Programming already exists for funcionario_id=%s; updating programming_id=%s instead of creating duplicate",
+            programming.funcionario_id,
+            existing.id,
+        )
         
         # Map Create schema to Update schema
         update_data = programming.dict(exclude={"funcionario_id", "period_id"})
@@ -298,7 +310,7 @@ def create_programming(
         
         # Handle Items
         if items_data is not None:
-            print(f"DEBUG: Updating items for programming {existing.id}. Count: {len(items_data)}")
+            logger.debug("Updating items for programming_id=%s item_count=%s", existing.id, len(items_data))
             # Delete existing items
             db.query(models.ProgrammingItem).filter(models.ProgrammingItem.programming_id == existing.id).delete()
             
@@ -328,7 +340,7 @@ def create_programming(
         programming_data = programming.dict()
         items_data = programming_data.pop("items", [])
         programming_data["version"] = 1
-        print(f"DEBUG: Creating new programming. Items count: {len(items_data)}")
+        logger.debug("Creating programming with item_count=%s", len(items_data))
         
         # Validate Rules
         validate_programming_rules(db, programming.funcionario_id, programming_data)
@@ -370,9 +382,20 @@ def create_programming(
     except HTTPException as he:
         db.rollback()
         raise he
-    except Exception as e:
+    except IntegrityError:
         db.rollback()
-        print(f"Error creating programming: {e}")
+        logger.warning(
+            "Programming unique constraint blocked a concurrent duplicate for funcionario_id=%s period_id=%s",
+            programming.funcionario_id,
+            programming.period_id,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe una programación para ese funcionario en el período indicado. Recargue la página antes de guardar.",
+        )
+    except Exception:
+        db.rollback()
+        logger.exception("Error creating programming for funcionario_id=%s", programming.funcionario_id)
         raise HTTPException(status_code=500, detail="Error interno al guardar la programación")
 
 @router.get("", response_model=List[schemas.ProgrammingResponse])
@@ -541,9 +564,9 @@ def delete_programming(
         )
         
         return {"message": "Programming deleted"}
-    except Exception as e:
+    except Exception:
         db.rollback()
-        print(f"Error deleting programming {programming_id}: {e}")
+        logger.exception("Error deleting programming_id=%s", programming_id)
         raise HTTPException(status_code=500, detail="Error interno al eliminar la programación")
 
 @router.post("/{programming_id}/items", response_model=schemas.ProgrammingItemResponse)

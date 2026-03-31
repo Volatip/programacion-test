@@ -282,6 +282,108 @@ def test_search_funcionarios_caps_results_without_breaking_default_flow(db_sessi
     assert len(payload) == funcionarios_router.MAX_SEARCH_RESULTS_LIMIT
 
 
+def test_search_funcionarios_global_scope_excludes_unassigned_officials_for_non_admin(db_session) -> None:
+    user = make_user(user_id=44, role="user")
+    period = make_period(name="2026-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+
+    scoped = models.Funcionario(
+        name="Ana Alcance",
+        title="Enfermero",
+        rut="50000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    foreign = models.Funcionario(
+        name="Ana Externa",
+        title="Enfermero",
+        rut="50000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([scoped, foreign])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=scoped.id))
+    db_session.commit()
+
+    payload = funcionarios_router.search_funcionarios(
+        q="Ana",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=user,
+    )
+
+    assert [item["rut"] for item in payload] == ["50000001"]
+
+
+def test_bind_funcionario_rejects_arbitrary_self_assignment_for_non_admin(db_session) -> None:
+    user = make_user(user_id=45, role="user")
+    period = make_period(name="2026-07", month=7, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+
+    foreign = models.Funcionario(
+        name="Funcionario Externo",
+        title="Enfermero",
+        rut="60000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(foreign)
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.bind_funcionario_to_user(
+            funcionario_id=foreign.id,
+            payload=None,
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "No tiene permiso para vincular este funcionario fuera de su ámbito autorizado."
+
+
+def test_bind_funcionario_allows_admin_to_assign_any_official(db_session) -> None:
+    admin = make_user(user_id=46, role="admin")
+    user = make_user(user_id=47, role="user")
+    period = make_period(name="2026-08", month=8, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, user, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="Funcionario Libre",
+        title="Enfermero",
+        rut="70000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.commit()
+
+    payload = funcionarios_router.bind_funcionario_to_user(
+        funcionario_id=funcionario.id,
+        payload={"user_id": user.id},
+        db=db_session,
+        current_user=admin,
+    )
+
+    binding = db_session.query(models.UserOfficial).filter_by(user_id=user.id, funcionario_id=funcionario.id).one()
+
+    assert payload == {"message": "Bound successfully"}
+    assert binding.user_id == user.id
+
+
 def test_read_programmings_normalizes_bounds_and_preserves_filtered_batches(db_session) -> None:
     user = make_user(user_id=42, role="user")
     period = make_period(name="2026-05", month=5, status="ACTIVO", is_active=True)
@@ -516,7 +618,7 @@ def test_database_url_builds_from_local_postgres_parts(monkeypatch: pytest.Monke
     monkeypatch.setenv("POSTGRES_PASSWORD", "postgres_local_2026")
 
     assert runtime_config.get_database_url() == (
-        "postgresql+psycopg2://postgres:postgres_local_2026@127.0.0.1:5432/programacion"
+        "postgresql+psycopg2://postgres:postgres_local_2026@127.0.0.1:5432/programacion?sslmode=disable"
     )
 
 
@@ -541,4 +643,8 @@ def test_sqlalchemy_connect_args_are_sqlite_only() -> None:
     assert runtime_config.get_sqlalchemy_connect_args("sqlite:///./sql_app.db") == {"check_same_thread": False}
     assert runtime_config.get_sqlalchemy_connect_args(
         "postgresql+psycopg2://postgres:postgres_local_2026@127.0.0.1:5432/programacion"
-    ) == {}
+    ) == {
+        "sslmode": "disable",
+        "connect_timeout": 5,
+        "application_name": "programacion-api",
+    }

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -90,6 +90,9 @@ class Group(Base):
 
 class UserOfficial(Base):
     __tablename__ = "user_officials"
+    __table_args__ = (
+        UniqueConstraint("user_id", "funcionario_id", name="uq_user_officials_user_funcionario"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
@@ -184,6 +187,9 @@ class Schedule(Base):
 
 class Programming(Base):
     __tablename__ = "programmings"
+    __table_args__ = (
+        UniqueConstraint("funcionario_id", "period_id", name="uq_programmings_funcionario_period"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     funcionario_id = Column(Integer, ForeignKey("funcionarios.id"), nullable=False)
@@ -256,6 +262,9 @@ class ProgrammingItem(Base):
 
 class UserHiddenOfficial(Base):
     __tablename__ = "user_hidden_officials"
+    __table_args__ = (
+        UniqueConstraint("user_id", "funcionario_rut", name="uq_user_hidden_officials_user_rut"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
@@ -293,5 +302,6 @@ class RevokedToken(Base):
     __tablename__ = "revoked_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
-    token = Column(String, unique=True, index=True, nullable=False)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    token = Column(String, unique=True, index=True, nullable=True)
     revoked_at = Column(DateTime(timezone=True), server_default=func.now())
