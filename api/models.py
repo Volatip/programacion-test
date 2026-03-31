@@ -345,3 +345,21 @@ class RevokedToken(Base):
     token_hash = Column(String(64), unique=True, index=True, nullable=False)
     token = Column(String, unique=True, index=True, nullable=True)
     revoked_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionAuditEvent(Base):
+    __tablename__ = "session_audit_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    user_rut = Column(String, nullable=True, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    success = Column(Boolean, nullable=False, default=True, index=True)
+    ip_address = Column(String(45), nullable=True, index=True)
+    user_agent = Column(String(512), nullable=True)
+    session_jti_hash = Column(String(64), nullable=True, index=True)
+    failure_reason = Column(String(255), nullable=True)
+    request_path = Column(String(255), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    user = relationship("User")

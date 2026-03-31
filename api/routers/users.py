@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timedelta
-from .. import models, schemas, database, auth
+from .. import models, schemas, database, auth, session_audit
 from ..permissions import PermissionChecker
 from ..limiter import limiter
 
@@ -16,13 +16,33 @@ logger = logging.getLogger(__name__)
 def login(request: Request, user_login: schemas.UserLogin, db: Session = Depends(database.get_db)):
     normalized_rut = auth.normalize_rut(user_login.rut)
     user = db.query(models.User).filter(models.User.rut == normalized_rut).first()
-    if not user or not auth.verify_password(user_login.password, user.password_hash):
+    if user is None or not auth.verify_password(user_login.password, user.password_hash):
+        session_audit.log_session_event(
+            db,
+            request,
+            event_type=session_audit.EVENT_LOGIN_FAILURE,
+            success=False,
+            user=user,
+            user_rut=normalized_rut,
+            failure_reason="invalid_credentials",
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect rut or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if user.status != "activo":
+        session_audit.log_session_event(
+            db,
+            request,
+            event_type=session_audit.EVENT_LOGIN_FAILURE,
+            success=False,
+            user=user,
+            user_rut=user.rut,
+            failure_reason="inactive_user",
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user",
@@ -39,7 +59,15 @@ def login(request: Request, user_login: schemas.UserLogin, db: Session = Depends
     )
     
     # Update last_access
-    user.last_access = datetime.now()
+    setattr(user, "last_access", datetime.now())
+    session_audit.log_session_event(
+        db,
+        request,
+        event_type=session_audit.EVENT_LOGIN_SUCCESS,
+        success=True,
+        user=user,
+        token=access_token,
+    )
     db.commit()
     
     return {
@@ -68,6 +96,14 @@ def refresh_token(request: Request, refresh_data: schemas.TokenRefresh, db: Sess
     )
 
     auth.revoke_token(db, refresh_data.refresh_token)
+    session_audit.log_session_event(
+        db,
+        request,
+        event_type=session_audit.EVENT_REFRESH_SUCCESS,
+        success=True,
+        user=user,
+        token=access_token,
+    )
     db.commit()
     
     return {
@@ -79,6 +115,7 @@ def refresh_token(request: Request, refresh_data: schemas.TokenRefresh, db: Sess
 
 @router.post("/logout")
 def logout(
+    request: Request,
     logout_data: schemas.LogoutRequest | None = None,
     current_user: models.User = Depends(auth.get_current_active_user),
     token: str = Depends(auth.oauth2_scheme),
@@ -90,12 +127,57 @@ def logout(
     auth.revoke_token(db, token)
     if logout_data and logout_data.refresh_token:
         auth.revoke_token(db, logout_data.refresh_token)
+    session_audit.log_session_event(
+        db,
+        request,
+        event_type=session_audit.EVENT_LOGOUT,
+        success=True,
+        user=current_user,
+        token=token,
+    )
     db.commit()
     return {"message": "Successfully logged out"}
 
 @router.get("/me", response_model=schemas.UserResponse)
-def read_users_me(current_user: models.User = Depends(auth.get_current_active_user)):
+def read_users_me(
+    request: Request,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(database.get_db),
+):
+    session_audit.log_session_event(
+        db,
+        request,
+        event_type=session_audit.EVENT_SESSION_VALIDATED,
+        success=True,
+        user=current_user,
+    )
+    db.commit()
     return current_user
+
+
+@router.get("/session-events", response_model=List[schemas.SessionAuditEventResponse])
+def read_session_events(
+    skip: int = 0,
+    limit: int = 100,
+    user_id: int | None = None,
+    event_type: str | None = None,
+    success: bool | None = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    PermissionChecker.check_can_manage_users(current_user)
+    bounded_limit = max(1, min(limit, 200))
+    return (
+        session_audit.build_session_events_query(
+            db,
+            user_id=user_id,
+            event_type=event_type,
+            success=success,
+        )
+        .offset(skip)
+        .limit(bounded_limit)
+        .all()
+    )
 
 @router.get("", response_model=List[schemas.UserResponse])
 def read_users(
@@ -116,7 +198,7 @@ def read_user(
 ):
     PermissionChecker.check_can_manage_users(current_user)
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not db_user:
+    if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
 
@@ -164,16 +246,16 @@ def update_user(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     # Solo admin o el mismo usuario pueden editar
-    if current_user.role != "admin" and current_user.id != user_id:
+    if current_user.role != "admin" and int(current_user.id) != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to update this user")
 
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not db_user:
+    if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = user_update.dict(exclude_unset=True)
     
-    if "password" in update_data and update_data["password"]:
+    if "password" in update_data and isinstance(update_data["password"], str) and update_data["password"]:
         update_data["password_hash"] = auth.get_password_hash(update_data["password"])
         del update_data["password"]
     

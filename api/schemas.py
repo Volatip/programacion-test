@@ -203,6 +203,22 @@ class LogoutRequest(BaseModel):
 class TokenData(BaseModel):
     rut: Optional[str] = None
 
+
+class SessionAuditEventResponse(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    user_rut: Optional[str] = None
+    event_type: str
+    success: bool
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    failure_reason: Optional[str] = None
+    request_path: Optional[str] = None
+    occurred_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
 # ==========================================
 # Funcionarios (Consolidated)
 # ==========================================

@@ -212,7 +212,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "font-src 'self' data:; "
             f"connect-src {' '.join(connect_src)};"
         )
-        if request.url.path in {"/api/users/login", "/api/users/refresh", "/api/users/logout", "/api/users/me"}:
+        if request.url.path in {"/api/users/login", "/api/users/refresh", "/api/users/logout", "/api/users/me"} or request.url.path.startswith("/api/users/session-events"):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
