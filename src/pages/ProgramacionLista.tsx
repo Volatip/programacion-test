@@ -4,6 +4,7 @@ import { useOfficials, Funcionario } from "../context/OfficialsContext";
 import { useState } from "react";
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { useProgrammingClassification } from "../hooks/useProgrammingClassification";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 interface ProgramacionListaProps {
   type: "scheduled" | "unscheduled";
@@ -19,6 +20,7 @@ export function ProgramacionLista({ type }: ProgramacionListaProps) {
 
   const isScheduled = type === "scheduled";
   const title = isScheduled ? "Funcionarios Programados" : "Funcionarios No Programados";
+  const helpSlug = isScheduled ? "programacion-programados" : "programacion-no-programados";
   const Icon = isScheduled ? Calendar : Clock;
   const colorClass = isScheduled ? "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30" : "text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30";
   
@@ -73,22 +75,25 @@ export function ProgramacionLista({ type }: ProgramacionListaProps) {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <button 
-          onClick={() => navigate('/programacion')}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-        >
-          <ArrowLeft className="w-6 h-6 text-gray-500 dark:text-gray-400" />
-        </button>
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${colorClass}`}>
-            <Icon className="w-8 h-8" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{title}</h1>
-            <p className="text-lg text-gray-500 dark:text-gray-400 mt-1">{listOfficials.length} funcionarios</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/programacion')}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+          >
+            <ArrowLeft className="w-6 h-6 text-gray-500 dark:text-gray-400" />
+          </button>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${colorClass}`}>
+              <Icon className="w-8 h-8" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{title}</h1>
+              <p className="text-lg text-gray-500 dark:text-gray-400 mt-1">{listOfficials.length} funcionarios</p>
+            </div>
           </div>
         </div>
+        <ContextualHelpButton slug={helpSlug} />
       </div>
 
       {/* Search Section */}

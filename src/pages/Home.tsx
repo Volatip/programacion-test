@@ -9,6 +9,7 @@ import { useDashboardStats } from "../hooks/useDashboardStats";
 import { useTheme } from "../hooks/useTheme";
 import { HoursChart } from "../components/dashboard/HoursChart";
 import { Users, Activity, FileText, AlertCircle, RefreshCw } from "lucide-react";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 interface GroupChartItem {
   name: string;
@@ -116,7 +117,9 @@ const Home = () => {
       <PageHeader
         title="Resumen de Programación"
         subtitle={`${stats?.summary.period_name || 'Período Actual'}`}
-      />
+      >
+        <ContextualHelpButton slug="home" />
+      </PageHeader>
 
       <div className="space-y-8">
         <DashboardStatsSection

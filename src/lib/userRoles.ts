@@ -3,8 +3,8 @@ export function getRoleLabel(role: string | undefined): string {
 
   const roleMap: Record<string, string> = {
     admin: "Administrador",
-    medical_coordinator: "Coordinador MÃ©dico",
-    non_medical_coordinator: "Coordinador No MÃ©dico",
+    medical_coordinator: "Coordinador Médico",
+    non_medical_coordinator: "Coordinador No Médico",
     user: "Usuario",
     guest: "Invitado"
   };

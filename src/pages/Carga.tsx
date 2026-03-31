@@ -6,6 +6,7 @@ import { CargaUploadPanel } from "../components/carga/CargaUploadPanel";
 import { usePeriods } from "../context/PeriodsContext";
 import { PageHeader } from "../components/ui/PageHeader";
 import { buildApiUrl, fetchWithAuth } from "../lib/api";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -218,7 +219,9 @@ export function Carga() {
             )}
           </div>
         }
-      />
+      >
+        <ContextualHelpButton slug="carga" />
+      </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <CargaOptionsSidebar

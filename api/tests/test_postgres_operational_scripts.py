@@ -40,6 +40,22 @@ def test_resolve_admin_settings_falls_back_to_admin_env(monkeypatch: pytest.Monk
     assert settings.sslmode == "require"
 
 
+def test_admin_settings_generate_full_sqlalchemy_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("POSTGRES_ADMIN_USER", "postgres")
+    monkeypatch.setenv("POSTGRES_ADMIN_PASSWORD", "admin-secret")
+    monkeypatch.setenv("POSTGRES_ADMIN_HOST", "127.0.0.1")
+    monkeypatch.setenv("POSTGRES_ADMIN_PORT", "5433")
+    monkeypatch.setenv("POSTGRES_ADMIN_DB", "programacion")
+    monkeypatch.setenv("POSTGRES_ADMIN_SSLMODE", "disable")
+
+    settings = postgres_ops_common.resolve_postgres_settings(admin=True)
+
+    assert settings.sqlalchemy_dsn().startswith(
+        "postgresql+psycopg2://postgres:admin-secret@127.0.0.1:5433/programacion"
+    )
+    assert "sslmode=disable" in settings.sqlalchemy_dsn()
+
+
 def test_backup_command_uses_custom_format_by_default(tmp_path: Path) -> None:
     command = postgres_backup.build_backup_command(output_path=tmp_path / "sample.dump")
 

@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from api import models, runtime_config
 from api.database import Base
+from api.scripts.postgres_ops_common import resolve_postgres_settings
 
 config = context.config
 
@@ -21,14 +22,25 @@ def get_database_url() -> str:
     return runtime_config.get_database_url()
 
 
+def get_migration_database_url() -> str:
+    runtime_config.load_environment()
+    runtime_database_url = runtime_config.get_database_url()
+
+    if runtime_database_url.startswith("postgresql") and runtime_config.get_env("POSTGRES_ADMIN_USER"):
+        admin_settings = resolve_postgres_settings(admin=True)
+        return admin_settings.sqlalchemy_dsn()
+
+    return runtime_database_url
+
+
 def get_connect_args(database_url: str | None = None) -> dict[str, object]:
-    resolved_database_url = database_url or get_database_url()
+    resolved_database_url = database_url or get_migration_database_url()
     return runtime_config.get_sqlalchemy_connect_args(resolved_database_url)
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=get_database_url(),
+        url=get_migration_database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
@@ -41,7 +53,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
-    database_url = get_database_url()
+    database_url = get_migration_database_url()
     configuration["sqlalchemy.url"] = database_url
 
     connectable = engine_from_config(

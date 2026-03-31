@@ -6,6 +6,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { CheckCircle, Trash, Plus, Calendar, Pencil, EyeOff, History } from 'lucide-react';
 import { Period } from '../context/PeriodsContext';
 import { buildApiUrl, fetchWithAuth } from '../lib/api';
+import { ContextualHelpButton } from '../components/contextual-help/ContextualHelpButton';
 
 type JsonBody = Record<string, unknown>;
 
@@ -184,6 +185,7 @@ export const Periodos: React.FC = () => {
         title="Períodos de Programación"
         subtitle="Gestiona los períodos académicos y sus estados"
       >
+        <ContextualHelpButton slug="periodos" />
         <button
           onClick={() => {
             setEditingId(null);

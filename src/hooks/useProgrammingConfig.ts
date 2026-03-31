@@ -140,7 +140,7 @@ export function useProgrammingConfig(periodId: number | undefined, funcionarioTi
           return;
         }
 
-        const isMedicalOfficial = funcionarioTitle === "MÃ©dico(a) Cirujano(a)";
+        const isMedicalOfficial = funcionarioTitle === "Médico(a) Cirujano(a)";
         let processList = loadedConfig.rawProcesses;
 
         if (!isMedicalOfficial) {

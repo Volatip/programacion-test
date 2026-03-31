@@ -7,6 +7,7 @@ import { FuncionariosModals } from "../components/funcionarios/FuncionariosModal
 import { FuncionariosPagination } from "../components/funcionarios/FuncionariosPagination";
 import { FuncionariosTable } from "../components/funcionarios/FuncionariosTable";
 import { FuncionariosToolbar } from "../components/funcionarios/FuncionariosToolbar";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 // Helper to normalize RUT input for search
 // Removes dots but keeps hyphen and other characters to allow user typing
@@ -205,7 +206,9 @@ export function Funcionarios() {
       <PageHeader 
         title="Funcionarios" 
         subtitle={`Administra los funcionarios (${filteredOfficials.length} total)`}
-      />
+      >
+        <ContextualHelpButton slug="funcionarios" />
+      </PageHeader>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden w-full transition-colors">
         <FuncionariosToolbar

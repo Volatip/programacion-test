@@ -4,6 +4,7 @@ import { RRHHUploadPanel } from "../components/rrhh/RRHHUploadPanel";
 import { usePeriods } from "../context/PeriodsContext";
 import { PageHeader } from "../components/ui/PageHeader";
 import { buildApiUrl, fetchWithAuth } from "../lib/api";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -112,7 +113,9 @@ export function RRHH() {
             </div>
           </div>
         }
-      />
+      >
+        <ContextualHelpButton slug="rrhh" />
+      </PageHeader>
 
       <RRHHUploadPanel
         isReadOnly={isReadOnly}

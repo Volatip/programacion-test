@@ -6,6 +6,7 @@ import { UsersToolbar } from "../components/users/UsersToolbar";
 import { PageHeader } from "../components/ui/PageHeader";
 import { formatRut } from "../lib/utils";
 import { buildApiUrl, fetchWithAuth } from "../lib/api";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 interface User {
   id: number;
@@ -231,7 +232,9 @@ export function Users() {
       <PageHeader
         title="Usuarios"
         subtitle={`Gestiona los usuarios del sistema (${filteredUsers.length} visibles)`}
-      />
+      >
+        <ContextualHelpButton slug="usuarios" />
+      </PageHeader>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
         <UsersToolbar

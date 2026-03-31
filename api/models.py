@@ -298,6 +298,46 @@ class Config(Base):
     description = Column(String, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+class ContextualHelpPage(Base):
+    __tablename__ = "contextual_help_pages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String, unique=True, index=True, nullable=False)
+    page_name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    updated_by = relationship("User")
+    sections = relationship(
+        "ContextualHelpSection",
+        back_populates="page",
+        cascade="all, delete-orphan",
+        order_by="ContextualHelpSection.position",
+    )
+
+    @property
+    def updated_by_name(self):
+        return self.updated_by.name if self.updated_by else None
+
+
+class ContextualHelpSection(Base):
+    __tablename__ = "contextual_help_sections"
+    __table_args__ = (
+        UniqueConstraint("page_id", "position", name="uq_contextual_help_sections_page_position"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    page_id = Column(Integer, ForeignKey("contextual_help_pages.id"), nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=1)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    page = relationship("ContextualHelpPage", back_populates="sections")
+
 class RevokedToken(Base):
     __tablename__ = "revoked_tokens"
 

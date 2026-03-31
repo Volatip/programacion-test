@@ -7,6 +7,7 @@ import { ProgrammingGroupHeader } from "../components/programacion/ProgrammingGr
 import { ProgrammingGroupOfficialsList } from "../components/programacion/ProgrammingGroupOfficialsList";
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { AddOfficialToGroupModal } from "../components/programacion/AddOfficialToGroupModal";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 export function ProgramacionGrupo() {
   const { groupId } = useParams();
@@ -52,7 +53,7 @@ export function ProgramacionGrupo() {
 
   const handleRemoveFromGroup = async (e: React.MouseEvent, official: Funcionario) => {
     e.stopPropagation();
-    if (!confirm(`Â¿EstÃ¡ seguro que desea quitar a ${official.name} de este grupo?`)) return;
+    if (!confirm(`¿Está seguro que desea quitar a ${official.name} de este grupo?`)) return;
 
     await assignToGroup(official.id, 0);
   };
@@ -84,14 +85,19 @@ export function ProgramacionGrupo() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <ProgrammingGroupHeader
-        groupName={group.name}
-        officialsCount={groupOfficials.length}
-        isReadOnly={isReadOnly}
-        canAssignOfficials
-        onBack={() => navigate("/programacion")}
-        onAddOfficial={() => setIsAddOfficialModalOpen(true)}
-      />
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <ProgrammingGroupHeader
+            groupName={group.name}
+            officialsCount={groupOfficials.length}
+            isReadOnly={isReadOnly}
+            canAssignOfficials
+            onBack={() => navigate("/programacion")}
+            onAddOfficial={() => setIsAddOfficialModalOpen(true)}
+          />
+        </div>
+        <ContextualHelpButton slug="programacion-grupo" className="mt-1" />
+      </div>
 
       <div className="relative">
         <div className="relative">

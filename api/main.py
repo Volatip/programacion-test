@@ -10,8 +10,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from .limiter import limiter
-from .routers import users, funcionarios, stats, groups, config, periods, programming
+from .routers import users, funcionarios, stats, groups, config, periods, programming, contextual_help
 from . import models, database, auth, runtime_config
+from .contextual_help_defaults import ensure_default_contextual_help
 from .websockets import manager
 import os
 
@@ -138,32 +139,32 @@ def bootstrap_initial_data() -> None:
 
         if not enable_bootstrap_admin:
             logger.info("Bootstrap admin disabled by runtime configuration")
-            return
-
-        if not admin_email or not admin_password:
+        elif not admin_email or not admin_password:
             logger.warning(
                 "Skipping bootstrap admin creation because ADMIN_EMAIL or ADMIN_PASSWORD is missing"
             )
-            return
+        else:
+            user = db.query(models.User).filter(models.User.email == admin_email).first()
+            if not user:
+                logger.info("Creating bootstrap admin user for configured admin email")
+                hashed_password = auth.get_password_hash(admin_password)
+                db_user = models.User(
+                    email=admin_email,
+                    password_hash=hashed_password,
+                    name="Administrador",
+                    rut=admin_rut,
+                    role="admin",
+                    status="activo"
+                )
+                db.add(db_user)
+                db.commit()
+                logger.info("Bootstrap admin user created for %s", admin_email)
+            else:
+                logger.info("Bootstrap admin user already exists for %s", admin_email)
 
-        user = db.query(models.User).filter(models.User.email == admin_email).first()
-        if not user:
-            logger.info("Creating bootstrap admin user for configured admin email")
-            hashed_password = auth.get_password_hash(admin_password)
-            db_user = models.User(
-                email=admin_email,
-                password_hash=hashed_password,
-                name="Administrador",
-                rut=admin_rut,
-                role="admin",
-                status="activo"
-            )
-            db.add(db_user)
-            db.commit()
-            logger.info("Bootstrap admin user created for %s", admin_email)
-            return
-
-        logger.info("Bootstrap admin user already exists for %s", admin_email)
+        created_help_pages = ensure_default_contextual_help(db)
+        if created_help_pages:
+            logger.info("Seeded %s contextual help page(s)", created_help_pages)
     except Exception:
         db.rollback()
         logger.exception("Bootstrap admin initialization failed")
@@ -241,6 +242,7 @@ app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(periods.router, prefix="/api/periods", tags=["periods"])
 app.include_router(programming.router, prefix="/api/programming", tags=["programming"])
+app.include_router(contextual_help.router, prefix="/api/contextual-help", tags=["contextual-help"])
 
 @app.websocket("/ws/info-bar")
 async def websocket_endpoint(websocket: WebSocket):

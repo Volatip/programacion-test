@@ -20,6 +20,43 @@ class ConfigResponse(ConfigBase):
     class Config:
         from_attributes = True
 
+
+class ContextualHelpSectionBase(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1)
+
+
+class ContextualHelpSectionCreate(ContextualHelpSectionBase):
+    pass
+
+
+class ContextualHelpSectionResponse(ContextualHelpSectionBase):
+    id: int
+    position: int
+
+    class Config:
+        from_attributes = True
+
+
+class ContextualHelpPageUpsert(BaseModel):
+    page_name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    sections: List[ContextualHelpSectionCreate] = []
+
+
+class ContextualHelpPageResponse(BaseModel):
+    id: int
+    slug: str
+    page_name: str
+    description: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    updated_by_id: Optional[int] = None
+    updated_by_name: Optional[str] = None
+    sections: List[ContextualHelpSectionResponse] = []
+
+    class Config:
+        from_attributes = True
+
 class SpecialtyStatResponse(BaseModel):
     new_consult_percentage: float
     yield_new: float

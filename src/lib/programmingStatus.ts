@@ -1,9 +1,9 @@
 export const PROGRAMMING_EXEMPT_STATUSES = [
   "Renuncia",
   "Cambio de servicio",
-  "ComisiÃ³n de Servicio",
+  "Comisión de Servicio",
   "Permiso sin Goce",
-  "ComisiÃ³n de Estudio",
+  "Comisión de Estudio",
 ] as const;
 
 export const PROGRAMMING_ACTIVE_STATUS_OPTIONS = [

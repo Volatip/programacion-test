@@ -7,6 +7,7 @@ import { ProgrammingGroupsPanel } from "../components/programacion/ProgrammingGr
 import { ProgrammingSearchBar } from "../components/programacion/ProgrammingSearchBar";
 import { ProgrammingStatusSummary } from "../components/programacion/ProgrammingStatusSummary";
 import { PageHeader } from "../components/ui/PageHeader";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
 export function Programacion() {
   const { officials: myOfficials, groups, addGroup, updateGroup, removeGroup } = useOfficials();
@@ -103,6 +104,7 @@ export function Programacion() {
         title="Programación"
         subtitle="Gestión de grupos y asignación de actividades"
       >
+         <ContextualHelpButton slug="programacion" />
          <ProgrammingSearchBar
            searchQuery={searchQuery}
            setSearchQuery={setSearchQuery}

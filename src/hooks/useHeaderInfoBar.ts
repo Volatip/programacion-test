@@ -3,7 +3,7 @@ import { buildApiUrl, fetchWithAuth } from "../lib/api";
 
 const HEADER_INFO_STORAGE_KEY = "headerInfoText";
 const HEADER_VISIBILITY_STORAGE_KEY = "headerInfoVisible";
-const DEFAULT_INFO_TEXT = "Â¡Bienvenido al sistema de gestiÃ³n!";
+const DEFAULT_INFO_TEXT = "¡Bienvenido al sistema de gestión!";
 
 interface HeaderInfoBarMessage {
   type?: string;

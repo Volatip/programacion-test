@@ -153,3 +153,10 @@ class PermissionChecker:
     @staticmethod
     def check_can_manage_users(user: models.User):
         return PermissionChecker.require_admin(user)
+
+    @staticmethod
+    def check_can_manage_contextual_help(user: models.User):
+        return PermissionChecker.require_admin(
+            user,
+            "Solo los administradores pueden gestionar las ayudas contextuales.",
+        )

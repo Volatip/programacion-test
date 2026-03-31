@@ -9,6 +9,7 @@ import { Login } from "./pages/Login";
 import { Periodos } from "./pages/Periodos";
 
 const Users = lazy(() => import("./pages/Users").then((module) => ({ default: module.Users })));
+const ContextualHelpAdmin = lazy(() => import("./pages/ContextualHelpAdmin").then((module) => ({ default: module.ContextualHelpAdmin })));
 const RRHH = lazy(() => import("./pages/RRHH").then((module) => ({ default: module.RRHH })));
 const Carga = lazy(() => import("./pages/Carga").then((module) => ({ default: module.Carga })));
 const Programacion = lazy(() => import("./pages/Programacion").then((module) => ({ default: module.Programacion })));
@@ -31,6 +32,7 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
                 <Route path="/usuarios" element={lazyPage(<Users />)} />
+                <Route path="/admin/ayudas-contextuales" element={lazyPage(<ContextualHelpAdmin />)} />
                 <Route path="/rrhh" element={lazyPage(<RRHH />)} />
                 <Route path="/carga" element={lazyPage(<Carga />)} />
               </Route>

@@ -28,7 +28,7 @@ class PostgresConnectionSettings:
         query = {}
         if self.sslmode:
             query["sslmode"] = self.sslmode
-        return str(
+        return (
             URL.create(
                 "postgresql+psycopg2",
                 username=self.user,
@@ -37,7 +37,23 @@ class PostgresConnectionSettings:
                 port=int(self.port),
                 database=self.database,
                 query=query,
-            )
+            ).render_as_string(hide_password=False)
+        )
+
+    def sqlalchemy_dsn(self) -> str:
+        query = {}
+        if self.sslmode:
+            query["sslmode"] = self.sslmode
+        return (
+            URL.create(
+                "postgresql+psycopg2",
+                username=self.user,
+                password=self.password,
+                host=self.host,
+                port=int(self.port),
+                database=self.database,
+                query=query,
+            ).render_as_string(hide_password=False)
         )
 
 

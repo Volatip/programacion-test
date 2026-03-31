@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, Users, Briefcase, Calendar, FileSpreadsheet, Upload, History, Github } from "lucide-react";
+import { Home, Users, Briefcase, Calendar, FileSpreadsheet, Upload, History, Github, CircleHelp } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../context/AuthContext";
 
@@ -9,6 +9,7 @@ export function Sidebar() {
   const navItems = [
     { to: "/", icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator'] },
     { to: "/usuarios", icon: Users, label: "Usuarios", roles: ['admin', 'administrador'] },
+    { to: "/admin/ayudas-contextuales", icon: CircleHelp, label: "Ayudas", roles: ['admin', 'administrador'] },
     { to: "/periodos", icon: History, label: "Periodos", roles: ['admin', 'administrador'] },
     { to: "/rrhh", icon: FileSpreadsheet, label: "RRHH", roles: ['admin', 'administrador'] },
     { to: "/carga", icon: Upload, label: "Carga", roles: ['admin', 'administrador'] },
