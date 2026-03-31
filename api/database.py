@@ -23,6 +23,12 @@ ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parent.parent / "alembic.ini"
 ALEMBIC_VERSIONS_PATH = Path(__file__).resolve().parent / "migrations" / "versions"
 
 
+def _ensure_models_registered() -> None:
+    # Import models lazily so Base.metadata is fully populated even in isolated tests
+    # that import `database` without importing `models` first.
+    from . import models  # noqa: F401
+
+
 def _get_table_columns(current_engine: Engine, table_name: str) -> dict[str, dict[str, Any]]:
     inspector = inspect(current_engine)
     return {
@@ -32,6 +38,7 @@ def _get_table_columns(current_engine: Engine, table_name: str) -> dict[str, dic
 
 
 def _get_missing_columns(current_engine: Engine, expected_tables: Iterable[str]) -> dict[str, list[str]]:
+    _ensure_models_registered()
     missing_columns: dict[str, list[str]] = {}
 
     for table_name in expected_tables:
@@ -49,6 +56,7 @@ def _get_missing_columns(current_engine: Engine, expected_tables: Iterable[str])
 
 
 def _get_schema_compatibility_issues(current_engine: Engine, expected_tables: Iterable[str]) -> list[str]:
+    _ensure_models_registered()
     issues: list[str] = []
 
     if "revoked_tokens" not in expected_tables:
@@ -145,7 +153,7 @@ def _repair_local_revoked_tokens_schema(
     compatibility_issues: list[str],
 ) -> bool:
     revoked_token_missing_columns = missing_columns.get("revoked_tokens", [])
-    token_hash_missing = revoked_token_missing_columns == ["token_hash"]
+    token_hash_missing = "token_hash" in revoked_token_missing_columns
     token_nullability_drift = "revoked_tokens.token must allow NULL values" in compatibility_issues
 
     if not token_hash_missing and not token_nullability_drift:
@@ -202,6 +210,7 @@ def _repair_local_revoked_tokens_schema(
 
 
 def create_schema(target_engine: Engine | None = None) -> None:
+    _ensure_models_registered()
     Base.metadata.create_all(bind=target_engine or engine)
 
 
@@ -323,6 +332,7 @@ def ensure_database_ready(
     *,
     required_tables: Iterable[str] | None = None,
 ) -> None:
+    _ensure_models_registered()
     current_engine = target_engine or engine
 
     with current_engine.connect() as connection:
