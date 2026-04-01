@@ -93,7 +93,7 @@ export function validateProgrammingForm({
 
       if (shouldShowPerformanceFields(entry.activity)) {
         const performance = parseFloat(entry.performance);
-        if (isNaN(performance) || entry.performance.trim() === "") {
+        if (isNaN(performance) || entry.performance.trim() === "" || performance < 0) {
           errors[`activity_${entry.id}_performance`] = true;
           entryError = true;
         }

@@ -80,16 +80,9 @@ def validate_items(items: List[dict], is_medical: bool = False):
             raise HTTPException(status_code=400, detail=f"Las horas en la fila {index + 1} deben ser mayores a 0.")
             
         # Performance
-        # We check if key exists, but it's a dict from pydantic so it has defaults.
-        # But defaults are 0.0. 
-        # Is 0.0 valid for performance? 
-        # Frontend check: `if (isNaN(perf) || (entry.performance.trim() === ""))`.
-        # If user types "0", frontend accepts it? `parseFloat("0")` is 0. 
-        # `entry.performance.trim() !== ""` is true.
-        # So frontend accepts 0.
-        # Backend should probably accept 0 too.
-        # But we should check it's not None (it won't be if float).
-        pass
+        performance = item.get("performance", 0.0)
+        if performance < 0:
+            raise HTTPException(status_code=400, detail=f"El rendimiento en la fila {index + 1} no puede ser negativo.")
 
 def validate_programming_rules(db: Session, funcionario_id: int, data: dict):
     """

@@ -248,7 +248,18 @@ export function ProgrammingActivitiesTable({
                     min="0"
                     step="1"
                     value={entry.performance}
-                    onChange={(e) => updateEntry(entry.id, "performance", e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value.startsWith("-")) {
+                        return;
+                      }
+                      updateEntry(entry.id, "performance", value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "-" || e.key === "e" || e.key === "E") {
+                        e.preventDefault();
+                      }
+                    }}
                     placeholder="Ej: 2"
                     disabled={isReadOnly}
                     className={`w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500 dark:disabled:text-gray-500 dark:text-white dark:placeholder-gray-400 ${
