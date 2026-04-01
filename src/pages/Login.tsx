@@ -6,6 +6,9 @@ import { formatRut, validateRut } from '../lib/utils';
 import { Modal } from '../components/ui/Modal';
 import { useTheme } from '../hooks/useTheme';
 
+const LOGO_URL = `${import.meta.env.BASE_URL}logo.png`;
+const BACKGROUND_URL = `${import.meta.env.BASE_URL}fondo.jpg`;
+
 export function Login() {
   const [rut, setRut] = useState('');
   const [password, setPassword] = useState('');
@@ -59,7 +62,7 @@ export function Login() {
           <div className="text-center mb-10">
             <div className="flex justify-center mb-6">
               <img
-                src="/logo.png"
+                src={LOGO_URL}
                 alt="Logo Hospital"
                 className="h-24 w-auto object-contain drop-shadow-lg"
                 onError={(e) => {
@@ -182,7 +185,7 @@ export function Login() {
       <div className="hidden lg:flex lg:w-[60%] bg-white relative items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src="/fondo.jpg"
+            src={BACKGROUND_URL}
             alt="Fondo Hospital"
             className="w-full h-full object-cover opacity-90"
           />

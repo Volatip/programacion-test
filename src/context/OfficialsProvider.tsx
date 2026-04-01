@@ -1,4 +1,4 @@
-import React, { useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { usePeriods } from './PeriodsContext';
 import { fetchWithAuth, buildApiUrl } from '../lib/api';
@@ -46,10 +46,24 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   const [officials, setOfficials] = useState<Funcionario[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
 
+  const groupsWithCurrentPeriodCounts = useMemo(() => {
+    const countsByGroupId = officials.reduce<Record<number, number>>((acc, official) => {
+      if (official.groupId > 0 && official.status === 'activo') {
+        acc[official.groupId] = (acc[official.groupId] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    return groups.map((group) => ({
+      ...group,
+      count: countsByGroupId[group.id] || 0,
+    }));
+  }, [groups, officials]);
+
   useEffect(() => {
     setOfficials([]);
     setGroups([]);
-  }, [user?.id]);
+  }, [user?.id, selectedPeriod?.id]);
 
   const mapFuncionario = (item: RawFuncionario): Funcionario => ({
     id: item.id,
@@ -136,12 +150,12 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchGroups = useCallback(async () => {
-    if (!user) {
+    if (!user || !selectedPeriod) {
       setGroups([]);
       return;
     }
     try {
-      const response = await fetchWithAuth('/groups');
+      const response = await fetchWithAuth(`/groups?period_id=${selectedPeriod.id}`);
       if (response.ok) {
         const data: RawGroup[] = await response.json();
         setGroups(data.map((g) => ({
@@ -156,7 +170,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       setGroups([]);
       console.error("Error fetching groups:", error);
     }
-  }, [user]);
+  }, [user, selectedPeriod]);
 
   useEffect(() => {
     fetchGroups();
@@ -237,14 +251,14 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   }, [user, updateOfficialLocally]);
 
   const addGroup = async (name: string) => {
-    if (!user) return;
+    if (!user || !selectedPeriod) return;
     try {
       const response = await fetchWithAuth(buildApiUrl('/groups'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name, period_id: selectedPeriod.id })
       });
       if (response.ok) {
         fetchGroups();
@@ -321,7 +335,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       updateOfficialLocally,
       searchOfficials,
       hrDatabase: officials, 
-      groups,
+      groups: groupsWithCurrentPeriodCounts,
       addGroup,
       updateGroup,
       removeGroup,

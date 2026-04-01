@@ -3,9 +3,9 @@ import { usePeriods } from '../context/PeriodsContext';
 import { useAuth } from '../context/AuthContext';
 import { PeriodsModals } from '../components/periodos/PeriodsModals';
 import { PageHeader } from '../components/ui/PageHeader';
-import { CheckCircle, Trash, Plus, Calendar, Pencil, EyeOff, History } from 'lucide-react';
+import { CheckCircle, Trash, Plus, Calendar, Pencil, EyeOff, History, CopyPlus } from 'lucide-react';
 import { Period } from '../context/PeriodsContext';
-import { buildApiUrl, fetchWithAuth } from '../lib/api';
+import { buildApiUrl, fetchWithAuth, parseErrorDetail } from '../lib/api';
 import { ContextualHelpButton } from '../components/contextual-help/ContextualHelpButton';
 
 type JsonBody = Record<string, unknown>;
@@ -22,6 +22,13 @@ const api = {
     body: body ? JSON.stringify(body) : undefined
   }),
   delete: (url: string) => fetchWithAuth(buildApiUrl(url), { method: 'DELETE' })
+};
+
+type DuplicateState = {
+  isOpen: boolean;
+  sourcePeriod: Period | null;
+  destinationPeriodId: string;
+  isSubmitting: boolean;
 };
 
 export const Periodos: React.FC = () => {
@@ -54,6 +61,12 @@ export const Periodos: React.FC = () => {
   });
 
   const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
+  const [duplicateState, setDuplicateState] = useState<DuplicateState>({
+    isOpen: false,
+    sourcePeriod: null,
+    destinationPeriodId: '',
+    isSubmitting: false
+  });
 
   if (user?.role !== 'admin') {
     return <div className="p-6 text-center text-gray-500">Acceso denegado</div>;
@@ -113,7 +126,7 @@ export const Periodos: React.FC = () => {
     if (confirm("¿Activar este período? Se desactivarán los otros.")) {
       try {
         await api.post(`/periods/${periodId}/activate`);
-        await refreshPeriods();
+        await refreshPeriods({ forceActiveSelection: true });
       } catch (error) {
         console.error(error);
       }
@@ -148,6 +161,52 @@ export const Periodos: React.FC = () => {
 
   const cancelDelete = () => {
     setDeleteState({ isOpen: false, step: 1, periodId: null });
+  };
+
+  const openDuplicateModal = (period: Period) => {
+    const defaultTarget = periods.find((candidate) => candidate.id !== period.id);
+    setDuplicateState({
+      isOpen: true,
+      sourcePeriod: period,
+      destinationPeriodId: defaultTarget ? String(defaultTarget.id) : '',
+      isSubmitting: false
+    });
+  };
+
+  const closeDuplicateModal = () => {
+    setDuplicateState({
+      isOpen: false,
+      sourcePeriod: null,
+      destinationPeriodId: '',
+      isSubmitting: false
+    });
+  };
+
+  const submitDuplicate = async () => {
+    if (!duplicateState.sourcePeriod || !duplicateState.destinationPeriodId) {
+      alert('Selecciona un período destino válido.');
+      return;
+    }
+
+    setDuplicateState((prev) => ({ ...prev, isSubmitting: true }));
+
+    try {
+      const response = await api.post(`/periods/${duplicateState.sourcePeriod.id}/duplicate-base`, {
+        destination_period_id: Number(duplicateState.destinationPeriodId)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorDetail(response, 'No fue posible duplicar la base del período.'));
+      }
+
+      await refreshPeriods();
+      closeDuplicateModal();
+      alert('Base del período duplicada correctamente.');
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'No fue posible duplicar la base del período.');
+      setDuplicateState((prev) => ({ ...prev, isSubmitting: false }));
+    }
   };
 
   const getStatusBadge = (status: string, isActive: boolean) => {
@@ -241,6 +300,14 @@ export const Periodos: React.FC = () => {
                       >
                         <Pencil size={18} />
                       </button>
+                      <button
+                        onClick={() => openDuplicateModal(period)}
+                        disabled={periods.length < 2}
+                        className="text-gray-400 hover:text-indigo-600 dark:text-gray-500 dark:hover:text-indigo-400 p-1.5 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Duplicar base a otro período"
+                      >
+                        <CopyPlus size={18} />
+                      </button>
                       {period.status === 'OCULTO' && (
                         <button
                           onClick={() => handleActivate(period.id)}
@@ -287,6 +354,11 @@ export const Periodos: React.FC = () => {
         cancelDelete={cancelDelete}
         confirmDeleteStep1={confirmDeleteStep1}
         finalizeDelete={finalizeDelete}
+        periods={periods}
+        duplicateState={duplicateState}
+        setDuplicateState={setDuplicateState}
+        closeDuplicateModal={closeDuplicateModal}
+        submitDuplicate={submitDuplicate}
       />
     </div>
   );

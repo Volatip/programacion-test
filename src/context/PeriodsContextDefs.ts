@@ -17,7 +17,7 @@ export interface PeriodsContextType {
     loading: boolean;
     isReadOnly: boolean;
     setSelectedPeriod: (period: Period | null) => void;
-    refreshPeriods: () => Promise<void>;
+    refreshPeriods: (options?: { forceActiveSelection?: boolean }) => Promise<void>;
 }
 
 export const PeriodsContext = createContext<PeriodsContextType | undefined>(undefined);

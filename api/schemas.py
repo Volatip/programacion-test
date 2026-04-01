@@ -109,6 +109,7 @@ class PerformanceUnitResponse(BaseModel):
 class GroupBase(BaseModel):
     name: str
     user_id: Optional[int] = None
+    period_id: Optional[int] = None
 
 class GroupCreate(GroupBase):
     pass
@@ -152,6 +153,26 @@ class ProgrammingPeriodResponse(ProgrammingPeriodBase):
     
     class Config:
         from_attributes = True
+
+
+class PeriodBaseDuplicationRequest(BaseModel):
+    destination_period_id: int
+
+
+class PeriodBaseDuplicationResponse(BaseModel):
+    message: str
+    source_period_id: int
+    destination_period_id: int
+    funcionarios: int
+    groups: int
+    user_officials: int
+    programmings: int
+    programming_items: int
+    specialties: int
+    specialty_stats: int
+    processes: int
+    activity_types: int
+    performance_units: int
 
 # ==========================================
 # Users & Auth

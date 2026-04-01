@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from .. import models, schemas, database, auth
+from .. import models, schemas, database, auth, period_duplication
 from datetime import datetime
 
 router = APIRouter()
@@ -34,6 +34,8 @@ def delete_related_period_data(db: Session, period_id: int):
     db.query(models.Process).filter(models.Process.period_id == period_id).delete(synchronize_session=False)
     db.query(models.ActivityType).filter(models.ActivityType.period_id == period_id).delete(synchronize_session=False)
     db.query(models.PerformanceUnit).filter(models.PerformanceUnit.period_id == period_id).delete(synchronize_session=False)
+    db.query(models.UserHiddenOfficial).filter(models.UserHiddenOfficial.period_id == period_id).delete(synchronize_session=False)
+    db.query(models.OfficialAudit).filter(models.OfficialAudit.period_id == period_id).delete(synchronize_session=False)
 
     if official_ids:
         db.query(models.Funcionario).filter(models.Funcionario.period_id == period_id).delete(synchronize_session=False)
@@ -59,10 +61,11 @@ def create_period(
         if not period.status:
             period.status = "ANTIGUO" # Default
 
-    db_period = models.ProgrammingPeriod(**period.dict())
+    period_data = period.dict()
+    db_period = models.ProgrammingPeriod(**period_data)
     
     # If set as active, deactivate others
-    if db_period.status == "ACTIVO":
+    if period_data.get("status") == "ACTIVO":
         # Only change currently active ones to ANTIGUO
         db.query(models.ProgrammingPeriod).filter(models.ProgrammingPeriod.status == "ACTIVO").update({"status": "ANTIGUO", "is_active": False})
         # Fallback for legacy data that might rely on is_active but has different status
@@ -147,11 +150,41 @@ def activate_period(
     db.query(models.ProgrammingPeriod).filter(models.ProgrammingPeriod.is_active == True).update({"is_active": False})
     
     # Activate target
-    db_period.status = "ACTIVO"
-    db_period.is_active = True
+    setattr(db_period, "status", "ACTIVO")
+    setattr(db_period, "is_active", True)
     db.commit()
     
     return {"message": f"Period {db_period.name} activated"}
+
+
+@router.post("/{period_id}/duplicate-base", response_model=schemas.PeriodBaseDuplicationResponse)
+def duplicate_period_base_endpoint(
+    period_id: int,
+    payload: schemas.PeriodBaseDuplicationRequest,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_admin_user),
+):
+    result = period_duplication.duplicate_period_base(
+        db,
+        source_period_id=period_id,
+        destination_period_id=payload.destination_period_id,
+    )
+
+    return schemas.PeriodBaseDuplicationResponse(
+        message="Datos base duplicados correctamente",
+        source_period_id=result.source_period_id,
+        destination_period_id=result.destination_period_id,
+        funcionarios=result.funcionarios,
+        groups=result.groups,
+        user_officials=result.user_officials,
+        programmings=result.programmings,
+        programming_items=result.programming_items,
+        specialties=result.specialties,
+        specialty_stats=result.specialty_stats,
+        processes=result.processes,
+        activity_types=result.activity_types,
+        performance_units=result.performance_units,
+    )
 
 @router.delete("/{period_id}")
 def delete_period(

@@ -23,33 +23,34 @@ import json
 logger = logging.getLogger(__name__)
 
 
-def get_user_scoped_ruts(db: Session, user_id: int, *, include_hidden: bool = False) -> list[str]:
-    linked_ruts = [
-        row[0]
-        for row in db.query(models.Funcionario.rut)
-        .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)
-        .filter(models.UserOfficial.user_id == user_id)
-        .all()
-        if row[0]
-    ]
+def get_user_scoped_ruts(
+    db: Session,
+    user_id: int,
+    *,
+    period_id: Optional[int] = None,
+    include_hidden: bool = False,
+) -> list[str]:
+    linked_query = db.query(models.Funcionario.rut).join(
+        models.UserOfficial,
+        models.UserOfficial.funcionario_id == models.Funcionario.id,
+    ).filter(models.UserOfficial.user_id == user_id)
+
+    if period_id is not None:
+        linked_query = linked_query.filter(models.Funcionario.period_id == period_id)
+
+    linked_ruts = [row[0] for row in linked_query.all() if row[0]]
+
+    hidden_query = db.query(models.UserHiddenOfficial.funcionario_rut).filter(
+        models.UserHiddenOfficial.user_id == user_id
+    )
+    if period_id is not None:
+        hidden_query = hidden_query.filter(models.UserHiddenOfficial.period_id == period_id)
 
     if include_hidden:
-        hidden_ruts = [
-            row[0]
-            for row in db.query(models.UserHiddenOfficial.funcionario_rut)
-            .filter(models.UserHiddenOfficial.user_id == user_id)
-            .all()
-            if row[0]
-        ]
+        hidden_ruts = [row[0] for row in hidden_query.all() if row[0]]
         return list(dict.fromkeys([*linked_ruts, *hidden_ruts]))
 
-    hidden_ruts = {
-        row[0]
-        for row in db.query(models.UserHiddenOfficial.funcionario_rut)
-        .filter(models.UserHiddenOfficial.user_id == user_id)
-        .all()
-        if row[0]
-    }
+    hidden_ruts = {row[0] for row in hidden_query.all() if row[0]}
     return [rut for rut in linked_ruts if rut not in hidden_ruts]
 
 @router.post("/upload")
@@ -579,7 +580,12 @@ def read_funcionarios(
         # 1. Get linked RUTs and their Group IDs
         linked_officials = db.query(models.Funcionario.rut, models.UserOfficial.group_id)\
             .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)\
-            .filter(models.UserOfficial.user_id == effective_user_id).all()
+            .filter(models.UserOfficial.user_id == effective_user_id)
+
+        if period_id is not None:
+            linked_officials = linked_officials.filter(models.Funcionario.period_id == period_id)
+
+        linked_officials = linked_officials.all()
             
         linked_ruts = [r[0] for r in linked_officials]
         # Map RUT to Group ID (Note: If a person is in multiple groups, this simplistic map takes the last one.
@@ -587,7 +593,7 @@ def read_funcionarios(
         rut_to_group = {r[0]: r[1] for r in linked_officials}
         
         # Filter hidden officials
-        linked_ruts = get_user_scoped_ruts(db, effective_user_id)
+        linked_ruts = get_user_scoped_ruts(db, effective_user_id, period_id=period_id)
         
         if not linked_ruts:
              return []
@@ -741,9 +747,14 @@ def search_funcionarios(
         # 1. Get linked RUTs and their Group IDs
         linked_officials = db.query(models.Funcionario.rut, models.UserOfficial.group_id)\
             .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)\
-            .filter(models.UserOfficial.user_id == effective_user_id).all()
+            .filter(models.UserOfficial.user_id == effective_user_id)
 
-        linked_ruts = get_user_scoped_ruts(db, effective_user_id)
+        if period_id is not None:
+            linked_officials = linked_officials.filter(models.Funcionario.period_id == period_id)
+
+        linked_officials = linked_officials.all()
+
+        linked_ruts = get_user_scoped_ruts(db, effective_user_id, period_id=period_id)
         rut_to_group = {r[0]: r[1] for r in linked_officials}
         
         if not linked_ruts:
@@ -780,7 +791,7 @@ def search_funcionarios(
     query = db.query(models.Funcionario).filter(final_search_condition)
 
     if user_role != 'admin' and effective_user_id is not None:
-        scoped_ruts = get_user_scoped_ruts(db, effective_user_id, include_hidden=True)
+        scoped_ruts = get_user_scoped_ruts(db, effective_user_id, period_id=period_id, include_hidden=True)
         if not scoped_ruts:
             return []
         query = query.filter(models.Funcionario.rut.in_(scoped_ruts))
@@ -825,7 +836,8 @@ def bind_funcionario_to_user(
     if funcionario and funcionario.rut:
         hidden = db.query(models.UserHiddenOfficial).filter(
             models.UserHiddenOfficial.user_id == user_id,
-            models.UserHiddenOfficial.funcionario_rut == funcionario.rut
+            models.UserHiddenOfficial.funcionario_rut == funcionario.rut,
+            models.UserHiddenOfficial.period_id == funcionario.period_id,
         ).first()
         if hidden:
             db.delete(hidden)
@@ -882,6 +894,17 @@ def assign_funcionario_group(
 
     if group_id is not None:
         PermissionChecker.check_can_manage_group(current_user, group_id, db)
+        group = db.query(models.Group).filter(models.Group.id == group_id).first()
+        funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
+
+        if not group or not funcionario:
+            raise HTTPException(status_code=404, detail="Group or funcionario not found")
+
+        if group.period_id is not None and funcionario.period_id != group.period_id:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede asignar un funcionario a un grupo de otro período"
+            )
         
     bind.group_id = group_id
     db.commit()
@@ -912,7 +935,10 @@ def dismiss_funcionario(
         # Update all contracts with same RUT? 
         # Usually dismiss applies to the person, so all contracts with that RUT should be updated.
         if funcionario.rut:
-            contracts = db.query(models.Funcionario).filter(models.Funcionario.rut == funcionario.rut).all()
+            contracts = db.query(models.Funcionario).filter(
+                models.Funcionario.rut == funcionario.rut,
+                models.Funcionario.period_id == funcionario.period_id,
+            ).all()
             for c in contracts:
                 c.status = "inactivo"
         else:
@@ -929,13 +955,15 @@ def dismiss_funcionario(
         if funcionario.rut:
             existing_hide = db.query(models.UserHiddenOfficial).filter(
                 models.UserHiddenOfficial.user_id == user_id,
-                models.UserHiddenOfficial.funcionario_rut == funcionario.rut
+                models.UserHiddenOfficial.funcionario_rut == funcionario.rut,
+                models.UserHiddenOfficial.period_id == funcionario.period_id,
             ).first()
 
             if not existing_hide:
                 hidden = models.UserHiddenOfficial(
                     user_id=user_id,
                     funcionario_rut=funcionario.rut,
+                    period_id=funcionario.period_id,
                     reason=reason
                 )
                 db.add(hidden)
@@ -949,10 +977,13 @@ def dismiss_funcionario(
         # If I hide the PERSON, I should probably unbind all contracts for that person.
         
         if funcionario.rut:
-             contracts = db.query(models.Funcionario).filter(models.Funcionario.rut == funcionario.rut).all()
+             contracts = db.query(models.Funcionario).filter(
+                 models.Funcionario.rut == funcionario.rut,
+                 models.Funcionario.period_id == funcionario.period_id,
+             ).all()
              contract_ids = [c.id for c in contracts]
              db.query(models.UserOfficial).filter(
-                 models.UserOfficial.user_id == user_id, 
+                  models.UserOfficial.user_id == user_id, 
                  models.UserOfficial.funcionario_id.in_(contract_ids)
              ).delete(synchronize_session=False)
         else:
@@ -970,6 +1001,7 @@ def dismiss_funcionario(
         funcionario_id=funcionario_id if action == "Dismiss" else None,
         funcionario_name=funcionario.name,
         rut=funcionario.rut,
+        period_id=funcionario.period_id,
         user_id=user_id,
         action=action,
         reason=reason
@@ -1007,7 +1039,10 @@ def activate_funcionario(
     # Update all contracts with same RUT
     # Use transaction for atomicity (Session does this by default on commit)
     if funcionario.rut:
-        contracts = db.query(models.Funcionario).filter(models.Funcionario.rut == funcionario.rut).all()
+        contracts = db.query(models.Funcionario).filter(
+            models.Funcionario.rut == funcionario.rut,
+            models.Funcionario.period_id == funcionario.period_id,
+        ).all()
         for c in contracts:
             c.status = "activo"
     else:
@@ -1018,6 +1053,7 @@ def activate_funcionario(
         funcionario_id=funcionario_id,
         funcionario_name=funcionario.name,
         rut=funcionario.rut,
+        period_id=funcionario.period_id,
         user_id=user_id,
         action="Activate",
         reason="Manual Activation"

@@ -26,7 +26,7 @@ export const PeriodsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
     };
 
-    const refreshPeriods = useCallback(async () => {
+    const refreshPeriods = useCallback(async (options?: { forceActiveSelection?: boolean }) => {
         if (!isAuthenticated) return;
         setLoading(true);
         try {
@@ -37,6 +37,11 @@ export const PeriodsProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 
                 const active = data.find((p: Period) => p.is_active);
                 setActivePeriod(active || null);
+
+                if (options?.forceActiveSelection && active) {
+                    setSelectedPeriod(active);
+                    return;
+                }
                 
                 // Initialize selection logic
                 // 1. Try to restore from localStorage

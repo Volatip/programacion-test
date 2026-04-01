@@ -31,8 +31,8 @@ DUPLICATE_CHECKS: tuple[DuplicateCheck, ...] = (
     ),
     DuplicateCheck(
         table_name="user_hidden_officials",
-        columns=("user_id", "funcionario_rut"),
-        constraint_name="uq_user_hidden_officials_user_rut",
+        columns=("user_id", "funcionario_rut", "period_id"),
+        constraint_name="uq_user_hidden_officials_user_rut_period",
     ),
 )
 
@@ -149,6 +149,21 @@ def collect_readiness_diagnostics(target_engine: Engine, *, limit: int = 10) -> 
                     "columns": list(check.columns),
                     "status": "missing_table",
                     "detail": "Tabla ausente en la base inspeccionada.",
+                    "duplicate_groups": [],
+                }
+            )
+            continue
+
+        table_columns = {column["name"] for column in inspector.get_columns(check.table_name)}
+        missing_columns = [column for column in check.columns if column not in table_columns]
+        if missing_columns:
+            duplicate_checks.append(
+                {
+                    "table": check.table_name,
+                    "constraint": check.constraint_name,
+                    "columns": list(check.columns),
+                    "status": "missing_columns",
+                    "detail": "Columnas ausentes para validar la constraint: " + ", ".join(missing_columns),
                     "duplicate_groups": [],
                 }
             )

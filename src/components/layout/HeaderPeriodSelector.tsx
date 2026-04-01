@@ -19,6 +19,18 @@ export function HeaderPeriodSelector({
   setShowPeriodMenu,
   user,
 }: HeaderPeriodSelectorProps) {
+  const getPeriodStatusLabel = (period: Period) => {
+    if (period.status === "ACTIVO") {
+      return <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full">Activo</span>;
+    }
+
+    if (period.status === "OCULTO") {
+      return <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded-full">Oculto</span>;
+    }
+
+    return <span className="text-xs bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200 px-2 py-0.5 rounded-full">Histórico</span>;
+  };
+
   return (
     <div className="relative">
       <button
@@ -51,8 +63,7 @@ export function HeaderPeriodSelector({
                   className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${selectedPeriod?.id === period.id ? "text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-900/20" : "text-gray-700 dark:text-gray-300"}`}
                 >
                   <span>{period.name}</span>
-                  {period.status === "ACTIVO" && <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full">Activo</span>}
-                  {period.status === "OCULTO" && <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded-full">Oculto</span>}
+                  {getPeriodStatusLabel(period)}
                 </button>
               ))}
           </div>

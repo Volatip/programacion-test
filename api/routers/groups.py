@@ -10,6 +10,7 @@ router = APIRouter()
 @router.get("", response_model=List[schemas.GroupResponse])
 def read_groups(
     user_id: Optional[int] = None, 
+    period_id: Optional[int] = None,
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(database.get_db),
@@ -32,6 +33,9 @@ def read_groups(
     ).group_by(models.Group.id)
 
     query = query.filter(models.Group.user_id == effective_user_id)
+
+    if period_id is not None:
+        query = query.filter(models.Group.period_id == period_id)
     
     results = query.offset(skip).limit(limit).all()
     
@@ -49,7 +53,16 @@ def create_group(
 ):
     owner_id = current_user.id if group.user_id is None else PermissionChecker.resolve_user_scope(current_user, group.user_id)
 
-    db_group = models.Group(name=group.name, user_id=owner_id)
+    target_period_id = group.period_id
+    if target_period_id is None:
+        active_period = db.query(models.ProgrammingPeriod).filter(models.ProgrammingPeriod.status == "ACTIVO").first()
+        if active_period is None:
+            active_period = db.query(models.ProgrammingPeriod).filter(models.ProgrammingPeriod.is_active == True).first()
+        if active_period is None:
+            raise HTTPException(status_code=400, detail="No hay un período activo para crear el grupo")
+        target_period_id = active_period.id
+
+    db_group = models.Group(name=group.name, user_id=owner_id, period_id=target_period_id)
     db.add(db_group)
     db.commit()
     db.refresh(db_group)
@@ -98,7 +111,7 @@ def delete_group(
     
     officials = db.query(models.UserOfficial).filter(models.UserOfficial.group_id == group_id).all()
     for official in officials:
-        official.group_id = None
+        setattr(official, "group_id", None)
     
     db.delete(db_group)
     db.commit()

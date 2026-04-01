@@ -17,6 +17,7 @@ class AuditLogger:
         funcionario_id: Optional[int] = None,
         funcionario_name: Optional[str] = None,
         rut: Optional[str] = None,
+        period_id: Optional[int] = None,
     ):
         """
         Create an audit log entry.
@@ -26,6 +27,7 @@ class AuditLogger:
                 funcionario_id=funcionario_id,
                 funcionario_name=funcionario_name,
                 rut=rut,
+                period_id=period_id,
                 user_id=user_id,
                 action=action,
                 reason=reason

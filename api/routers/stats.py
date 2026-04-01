@@ -119,7 +119,8 @@ def get_dashboard_stats(
         OfficialAudit.funcionario_id,
         func.max(OfficialAudit.created_at).label("max_created_at"),
     ).filter(
-        OfficialAudit.action == "Dismiss"
+        OfficialAudit.action == "Dismiss",
+        OfficialAudit.period_id == current_period_id,
     ).group_by(
         OfficialAudit.funcionario_id
     ).subquery()
@@ -138,6 +139,7 @@ def get_dashboard_stats(
     ).filter(
         Funcionario.status == "inactivo",
         Funcionario.period_id == current_period_id,
+        OfficialAudit.period_id == current_period_id,
     )
 
     if effective_user_id is not None:

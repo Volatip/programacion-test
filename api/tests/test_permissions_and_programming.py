@@ -384,6 +384,185 @@ def test_bind_funcionario_allows_admin_to_assign_any_official(db_session) -> Non
     assert binding.user_id == user.id
 
 
+def test_bind_funcionario_hidden_scope_is_isolated_by_period(db_session) -> None:
+    user = make_user(user_id=48, role="user")
+    old_period = make_period(name="2026-09", month=9)
+    current_period = make_period(name="2026-10", month=10, status="ACTIVO", is_active=True)
+    db_session.add_all([user, old_period, current_period])
+    db_session.flush()
+
+    old_funcionario = models.Funcionario(
+        name="Ana Histórico",
+        title="Enfermero",
+        rut="71000001",
+        dv="K",
+        period_id=old_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    current_funcionario = models.Funcionario(
+        name="Ana Actual",
+        title="Enfermero",
+        rut="71000001",
+        dv="K",
+        period_id=current_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([old_funcionario, current_funcionario])
+    db_session.flush()
+    db_session.add(
+        models.UserHiddenOfficial(
+            user_id=user.id,
+            funcionario_rut="71000001",
+            period_id=old_period.id,
+            reason="Agregado por Error",
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.bind_funcionario_to_user(
+            funcionario_id=current_funcionario.id,
+            payload=None,
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_dismiss_funcionario_only_updates_same_period_contracts_and_hidden_records(db_session) -> None:
+    user = make_user(user_id=49, role="user")
+    target_period = make_period(name="2026-11", month=11, status="ACTIVO", is_active=True)
+    keep_period = make_period(name="2026-12", month=12)
+    db_session.add_all([user, target_period, keep_period])
+    db_session.flush()
+
+    target_a = models.Funcionario(name="Ana Uno", title="Enfermero", rut="72000001", dv="K", period_id=target_period.id, status="activo", is_active_roster=True)
+    target_b = models.Funcionario(name="Ana Dos", title="Enfermero", rut="72000001", dv="K", period_id=target_period.id, status="activo", is_active_roster=True)
+    keep_other_period = models.Funcionario(name="Ana Tres", title="Enfermero", rut="72000001", dv="K", period_id=keep_period.id, status="activo", is_active_roster=True)
+    db_session.add_all([target_a, target_b, keep_other_period])
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=target_a.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=target_b.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=keep_other_period.id),
+    ])
+    db_session.commit()
+
+    funcionarios_router.dismiss_funcionario(
+        funcionario_id=target_a.id,
+        payload={"reason": "Agregado por Error"},
+        db=db_session,
+        current_user=user,
+    )
+
+    hidden_rows = db_session.query(models.UserHiddenOfficial).filter_by(user_id=user.id, funcionario_rut="72000001").all()
+    remaining_bindings = db_session.query(models.UserOfficial).filter_by(user_id=user.id).all()
+    audit = db_session.query(models.OfficialAudit).filter_by(action="Hide", rut="72000001").one()
+
+    assert [(row.period_id, row.reason) for row in hidden_rows] == [(target_period.id, "Agregado por Error")]
+    assert {binding.funcionario_id for binding in remaining_bindings} == {keep_other_period.id}
+    assert audit.period_id == target_period.id
+
+
+def test_activate_funcionario_only_reactivates_same_period_contracts(db_session) -> None:
+    user = make_user(user_id=50, role="user")
+    target_period = make_period(name="2027-01", month=1, status="ACTIVO", is_active=True)
+    keep_period = make_period(name="2027-02", month=2)
+    db_session.add_all([user, target_period, keep_period])
+    db_session.flush()
+
+    target_a = models.Funcionario(name="Luis Uno", title="Enfermero", rut="73000001", dv="K", period_id=target_period.id, status="inactivo", is_active_roster=True)
+    target_b = models.Funcionario(name="Luis Dos", title="Enfermero", rut="73000001", dv="K", period_id=target_period.id, status="inactivo", is_active_roster=True)
+    keep_other_period = models.Funcionario(name="Luis Tres", title="Enfermero", rut="73000001", dv="K", period_id=keep_period.id, status="inactivo", is_active_roster=True)
+    db_session.add_all([target_a, target_b, keep_other_period])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=target_a.id))
+    db_session.commit()
+
+    funcionarios_router.activate_funcionario(
+        funcionario_id=target_a.id,
+        payload=None,
+        db=db_session,
+        current_user=user,
+    )
+
+    db_session.refresh(target_a)
+    db_session.refresh(target_b)
+    db_session.refresh(keep_other_period)
+    audit = db_session.query(models.OfficialAudit).filter_by(action="Activate", rut="73000001").one()
+
+    assert target_a.status == "activo"
+    assert target_b.status == "activo"
+    assert keep_other_period.status == "inactivo"
+    assert audit.period_id == target_period.id
+
+
+def test_dashboard_stats_ignore_audits_from_other_periods_with_same_rut(db_session) -> None:
+    user = make_user(user_id=51, role="user")
+    target_period = make_period(name="2027-03", month=3, status="ACTIVO", is_active=True)
+    other_period = make_period(name="2027-04", month=4)
+    db_session.add_all([user, target_period, other_period])
+    db_session.flush()
+
+    current_funcionario = models.Funcionario(
+        name="Carlos Actual",
+        title="Enfermero",
+        rut="74000001",
+        dv="K",
+        period_id=target_period.id,
+        status="inactivo",
+        is_active_roster=True,
+    )
+    other_funcionario = models.Funcionario(
+        name="Carlos Futuro",
+        title="Enfermero",
+        rut="74000001",
+        dv="K",
+        period_id=other_period.id,
+        status="inactivo",
+        is_active_roster=True,
+    )
+    db_session.add_all([current_funcionario, other_funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=current_funcionario.id))
+    db_session.add_all([
+        models.OfficialAudit(
+            funcionario_id=current_funcionario.id,
+            funcionario_name=current_funcionario.name,
+            rut=current_funcionario.rut,
+            period_id=target_period.id,
+            user_id=user.id,
+            action="Dismiss",
+            reason="Renuncia",
+        ),
+        models.OfficialAudit(
+            funcionario_id=other_funcionario.id,
+            funcionario_name=other_funcionario.name,
+            rut=other_funcionario.rut,
+            period_id=other_period.id,
+            user_id=user.id,
+            action="Dismiss",
+            reason="Cambio de servicio",
+        ),
+    ])
+    db_session.commit()
+
+    payload = stats_router.get_dashboard_stats(
+        period_id=target_period.id,
+        user_id=user.id,
+        history_limit=stats_router.DEFAULT_DASHBOARD_HISTORY_LIMIT,
+        db=db_session,
+        current_user=user,
+    )
+
+    assert payload["summary"]["inactive_total"] == 1
+    assert payload["summary"]["inactive_resignation"] == 1
+    assert payload["summary"]["inactive_mobility"] == 0
+
+
 def test_read_programmings_normalizes_bounds_and_preserves_filtered_batches(db_session) -> None:
     user = make_user(user_id=42, role="user")
     period = make_period(name="2026-05", month=5, status="ACTIVO", is_active=True)
@@ -543,6 +722,10 @@ def test_delete_related_period_data_cleans_target_period_only(db_session) -> Non
         models.ActivityType(name="Turno", period=keep_period),
         models.PerformanceUnit(name="Horas", period=target_period),
         models.PerformanceUnit(name="Controles", period=keep_period),
+        models.UserHiddenOfficial(user=user, funcionario_rut="11-1", period=target_period, reason="Agregado por Error"),
+        models.UserHiddenOfficial(user=user, funcionario_rut="22-2", period=keep_period, reason="Agregado por Error"),
+        models.OfficialAudit(funcionario_id=target_func.id, funcionario_name=target_func.name, rut=target_func.rut, period=target_period, user=user, action="Dismiss", reason="Renuncia"),
+        models.OfficialAudit(funcionario_id=keep_func.id, funcionario_name=keep_func.name, rut=keep_func.rut, period=keep_period, user=user, action="Dismiss", reason="Renuncia"),
     ])
     db_session.commit()
 
@@ -559,10 +742,14 @@ def test_delete_related_period_data_cleans_target_period_only(db_session) -> Non
     assert db_session.query(models.Process).filter(models.Process.period_id == target_period.id).count() == 0
     assert db_session.query(models.ActivityType).filter(models.ActivityType.period_id == target_period.id).count() == 0
     assert db_session.query(models.PerformanceUnit).filter(models.PerformanceUnit.period_id == target_period.id).count() == 0
+    assert db_session.query(models.UserHiddenOfficial).filter(models.UserHiddenOfficial.period_id == target_period.id).count() == 0
+    assert db_session.query(models.OfficialAudit).filter(models.OfficialAudit.period_id == target_period.id).count() == 0
 
     assert db_session.query(models.Funcionario).filter(models.Funcionario.period_id == keep_period.id).count() == 1
     assert db_session.query(models.Programming).filter(models.Programming.period_id == keep_period.id).count() == 1
     assert db_session.query(models.Specialty).filter(models.Specialty.period_id == keep_period.id).count() == 1
+    assert db_session.query(models.UserHiddenOfficial).filter(models.UserHiddenOfficial.period_id == keep_period.id).count() == 1
+    assert db_session.query(models.OfficialAudit).filter(models.OfficialAudit.period_id == keep_period.id).count() == 1
 
 
 def test_require_active_user_rejects_inactive_accounts() -> None:

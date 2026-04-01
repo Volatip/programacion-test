@@ -3,9 +3,15 @@ function getDefaultApiOrigin(): string {
     return "http://localhost:8000";
   }
 
-  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
   const hostname = window.location.hostname || "localhost";
-  return `${protocol}//${hostname}:8000`;
+  const isLocalEnvironment = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+
+  if (isLocalEnvironment) {
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    return `${protocol}//${hostname}:8000`;
+  }
+
+  return `${window.location.origin}/programacion`;
 }
 
 const DEFAULT_API_ORIGIN = getDefaultApiOrigin();

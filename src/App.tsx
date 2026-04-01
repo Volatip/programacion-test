@@ -23,7 +23,7 @@ function lazyPage(element: ReactNode) {
 function App() {
   return (
     <AppProviders>
-      <BrowserRouter>
+      <BrowserRouter basename="/programacion">
         <Routes>
           <Route path="/login" element={<Login />} />
 

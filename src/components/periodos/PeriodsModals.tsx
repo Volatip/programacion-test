@@ -1,6 +1,7 @@
 import type React from "react";
-import { AlertTriangle, History, Trash } from "lucide-react";
+import { AlertTriangle, CopyPlus, History, Trash } from "lucide-react";
 import { Modal } from "../ui/Modal";
+import type { Period } from "../../context/PeriodsContext";
 
 interface PeriodFormData {
   name: string;
@@ -14,6 +15,13 @@ interface DeleteState {
   isOpen: boolean;
   step: 1 | 2;
   periodId: number | null;
+}
+
+interface DuplicateState {
+  isOpen: boolean;
+  sourcePeriod: Period | null;
+  destinationPeriodId: string;
+  isSubmitting: boolean;
 }
 
 interface PeriodsModalsProps {
@@ -30,6 +38,11 @@ interface PeriodsModalsProps {
   cancelDelete: () => void;
   confirmDeleteStep1: () => void;
   finalizeDelete: () => Promise<void>;
+  periods: Period[];
+  duplicateState: DuplicateState;
+  setDuplicateState: React.Dispatch<React.SetStateAction<DuplicateState>>;
+  closeDuplicateModal: () => void;
+  submitDuplicate: () => Promise<void>;
 }
 
 export function PeriodsModals({
@@ -46,7 +59,14 @@ export function PeriodsModals({
   cancelDelete,
   confirmDeleteStep1,
   finalizeDelete,
+  periods,
+  duplicateState,
+  setDuplicateState,
+  closeDuplicateModal,
+  submitDuplicate,
 }: PeriodsModalsProps) {
+  const availableDestinationPeriods = periods.filter((period) => period.id !== duplicateState.sourcePeriod?.id);
+
   return (
     <>
       <Modal
@@ -185,6 +205,74 @@ export function PeriodsModals({
                 Confirmar y guardar
               </button>
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={duplicateState.isOpen}
+        onClose={closeDuplicateModal}
+        title="Duplicar base del período"
+        className="max-w-lg"
+      >
+        <div className="p-6 space-y-5">
+          <div className="flex items-start gap-3 rounded-lg border border-indigo-100 bg-indigo-50 p-4 dark:border-indigo-900/40 dark:bg-indigo-900/20">
+            <div className="mt-0.5 rounded-full bg-white p-2 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+              <CopyPlus className="h-5 w-5" />
+            </div>
+            <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+              <p>
+                Se copiarán los <strong>datos base</strong> del período <strong>{duplicateState.sourcePeriod?.name ?? ""}</strong> hacia otro período existente.
+              </p>
+              <p>
+                Se incluyen funcionarios, grupos, asignaciones, programación base y catálogos. <strong>No</strong> se duplican auditorías, ocultamientos ni schedules legacy.
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Por seguridad, el destino debe estar vacío en datos base para evitar inconsistencias.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Período destino</label>
+            <select
+              value={duplicateState.destinationPeriodId}
+              onChange={(event) =>
+                setDuplicateState((prev) => ({
+                  ...prev,
+                  destinationPeriodId: event.target.value,
+                }))
+              }
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-900 outline-none transition-shadow focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            >
+              {availableDestinationPeriods.length === 0 ? (
+                <option value="">No hay otro período disponible</option>
+              ) : (
+                availableDestinationPeriods.map((period) => (
+                  <option key={period.id} value={period.id}>
+                    {period.name} · {period.status}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={closeDuplicateModal}
+              className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={submitDuplicate}
+              disabled={duplicateState.isSubmitting || availableDestinationPeriods.length === 0}
+              className="rounded-lg bg-indigo-600 px-5 py-2.5 font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {duplicateState.isSubmitting ? "Duplicando..." : "Duplicar base"}
+            </button>
           </div>
         </div>
       </Modal>

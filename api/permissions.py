@@ -35,6 +35,13 @@ class PermissionChecker:
         """
         Check if the user can access a specific official.
         """
+        funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
+        if not funcionario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Funcionario not found"
+            )
+
         if user.role == "admin":
             return True
 
@@ -45,6 +52,19 @@ class PermissionChecker:
 
         if assignment:
             return True
+
+        funcionario_rut = (funcionario.rut or "").strip()
+        if funcionario_rut and funcionario.period_id is not None:
+            scoped_assignment = db.query(models.UserOfficial).join(
+                models.Funcionario,
+                models.Funcionario.id == models.UserOfficial.funcionario_id,
+            ).filter(
+                models.UserOfficial.user_id == user.id,
+                models.Funcionario.rut == funcionario_rut,
+                models.Funcionario.period_id == funcionario.period_id,
+            ).first()
+            if scoped_assignment:
+                return True
 
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -99,6 +119,7 @@ class PermissionChecker:
             ).filter(
                 models.UserOfficial.user_id == user.id,
                 models.Funcionario.rut == funcionario_rut,
+                models.Funcionario.period_id == funcionario.period_id,
             ).first()
             if scoped_assignment:
                 return funcionario
@@ -106,6 +127,7 @@ class PermissionChecker:
             hidden_assignment = db.query(models.UserHiddenOfficial).filter(
                 models.UserHiddenOfficial.user_id == user.id,
                 models.UserHiddenOfficial.funcionario_rut == funcionario_rut,
+                models.UserHiddenOfficial.period_id == funcionario.period_id,
             ).first()
             if hidden_assignment:
                 return funcionario

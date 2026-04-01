@@ -678,6 +678,7 @@ def audit_copy_programming(
             funcionario_id=target_official_id,
             funcionario_name=target_func.name,
             rut=target_func.rut,
+            period_id=target_func.period_id,
             user_id=user_id,
             action="Unauthorized Copy Attempt",
             reason=f"Intento de copia desde {source_func.name} (Título: {source_func.title}) hacia {target_func.name} (Título: {target_func.title})"
@@ -691,6 +692,7 @@ def audit_copy_programming(
         funcionario_id=target_official_id,
         funcionario_name=target_func.name,
         rut=target_func.rut,
+        period_id=target_func.period_id,
         user_id=user_id,
         action="Copy Programming",
         reason=f"Copiado desde {source_func.name}"
