@@ -563,6 +563,86 @@ def test_dashboard_stats_ignore_audits_from_other_periods_with_same_rut(db_sessi
     assert payload["summary"]["inactive_mobility"] == 0
 
 
+def test_dashboard_stats_count_people_not_raw_contracts_or_inactive_programmings(db_session) -> None:
+    user = make_user(user_id=52, role="user")
+    target_period = make_period(name="2027-05", month=5, status="ACTIVO", is_active=True)
+    db_session.add_all([user, target_period])
+    db_session.flush()
+
+    active_contract_a = models.Funcionario(
+        name="Patricia Uno",
+        title="Médico",
+        rut="75000001",
+        dv="K",
+        period_id=target_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    active_contract_b = models.Funcionario(
+        name="Patricia Uno",
+        title="Médico",
+        rut="75000001",
+        dv="K",
+        period_id=target_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    active_other = models.Funcionario(
+        name="Marco Dos",
+        title="Médico",
+        rut="75000002",
+        dv="K",
+        period_id=target_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    inactive_programmed = models.Funcionario(
+        name="Paula Renuncia",
+        title="Médico",
+        rut="75000003",
+        dv="K",
+        period_id=target_period.id,
+        status="inactivo",
+        is_active_roster=True,
+    )
+    db_session.add_all([active_contract_a, active_contract_b, active_other, inactive_programmed])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=active_contract_a.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=active_contract_b.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=active_other.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=inactive_programmed.id),
+        models.Programming(funcionario_id=active_contract_a.id, period_id=target_period.id),
+        models.Programming(funcionario_id=active_contract_b.id, period_id=target_period.id),
+        models.Programming(funcionario_id=active_other.id, period_id=target_period.id),
+        models.Programming(funcionario_id=inactive_programmed.id, period_id=target_period.id),
+        models.OfficialAudit(
+            funcionario_id=inactive_programmed.id,
+            funcionario_name=inactive_programmed.name,
+            rut=inactive_programmed.rut,
+            period_id=target_period.id,
+            user_id=user.id,
+            action="Dismiss",
+            reason="Renuncia",
+        ),
+    ])
+    db_session.commit()
+
+    payload = stats_router.get_dashboard_stats(
+        period_id=target_period.id,
+        user_id=user.id,
+        history_limit=stats_router.DEFAULT_DASHBOARD_HISTORY_LIMIT,
+        db=db_session,
+        current_user=user,
+    )
+
+    assert payload["summary"]["active_officials"] == 2
+    assert payload["summary"]["programmed"] == 2
+    assert payload["summary"]["unprogrammed"] == 0
+    assert payload["summary"]["inactive_total"] == 1
+
+
 def test_read_programmings_normalizes_bounds_and_preserves_filtered_batches(db_session) -> None:
     user = make_user(user_id=42, role="user")
     period = make_period(name="2026-05", month=5, status="ACTIVO", is_active=True)

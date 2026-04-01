@@ -22,6 +22,12 @@ DEFAULT_DASHBOARD_HISTORY_LIMIT = 24
 MAX_DASHBOARD_HISTORY_LIMIT = 60
 
 
+def get_official_identity_key(funcionario: Funcionario) -> str:
+    if funcionario.rut:
+        return funcionario.rut.strip()
+    return f"no-rut-{funcionario.id}"
+
+
 def get_target_period(db: Session, period_id: Optional[int]) -> Optional[ProgrammingPeriod]:
     target_period = None
 
@@ -72,7 +78,7 @@ def get_dashboard_stats(
     )
     effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
     target_period = get_target_period(db, period_id)
-    current_period_id = target_period.id if target_period else None
+    current_period_id = target_period.id if target_period is not None else None
 
     assigned_ruts_all_periods: Optional[list[str]] = None
     assigned_ruts_current_period: Optional[list[str]] = None
@@ -88,8 +94,8 @@ def get_dashboard_stats(
     programmed_count = 0
     unprogrammed_count = 0
 
-    if current_period_id:
-        active_query = db.query(Funcionario.id).filter(
+    if current_period_id is not None:
+        active_query = db.query(Funcionario).filter(
             Funcionario.status == "activo",
             Funcionario.period_id == current_period_id,
         )
@@ -98,22 +104,29 @@ def get_dashboard_stats(
                 UserOfficial, UserOfficial.funcionario_id == Funcionario.id
             ).filter(UserOfficial.user_id == effective_user_id)
 
-        total_active_officials = active_query.count()
+        active_officials = active_query.all()
+        active_official_keys = {get_official_identity_key(funcionario) for funcionario in active_officials}
+        total_active_officials = len(active_official_keys)
 
-        programmed_query = db.query(Programming.funcionario_id).filter(
-            Programming.period_id == current_period_id
+        programmed_query = db.query(Funcionario).join(
+            Programming,
+            and_(
+                Programming.funcionario_id == Funcionario.id,
+                Programming.period_id == current_period_id,
+            ),
+        ).filter(
+            Funcionario.status == "activo",
+            Funcionario.period_id == current_period_id,
         )
         if effective_user_id is not None:
             programmed_query = programmed_query.join(
-                UserOfficial, UserOfficial.funcionario_id == Programming.funcionario_id
+                UserOfficial, UserOfficial.funcionario_id == Funcionario.id
             ).filter(UserOfficial.user_id == effective_user_id)
 
-        programmed_count = programmed_query.count()
-
-        programmed_subquery = db.query(Programming.funcionario_id).filter(
-            Programming.period_id == current_period_id
-        )
-        unprogrammed_count = active_query.filter(~Funcionario.id.in_(programmed_subquery)).count()
+        programmed_officials = programmed_query.all()
+        programmed_official_keys = {get_official_identity_key(funcionario) for funcionario in programmed_officials}
+        programmed_count = len(programmed_official_keys)
+        unprogrammed_count = len(active_official_keys - programmed_official_keys)
 
     latest_audit_subquery = db.query(
         OfficialAudit.funcionario_id,
@@ -238,7 +251,7 @@ def get_dashboard_stats(
     ]
 
     group_hours_data = []
-    if current_period_id:
+    if current_period_id is not None:
         assigned_query = db.query(
             Group.name,
             Funcionario,
@@ -316,7 +329,7 @@ def get_dashboard_stats(
 
     shift_hours = 0.0
     shift_officials_count = 0
-    if current_period_id:
+    if current_period_id is not None:
         shift_query = db.query(
             func.sum(Funcionario.hours_per_week).label("total_hours"),
             func.count(Funcionario.id).label("count"),
