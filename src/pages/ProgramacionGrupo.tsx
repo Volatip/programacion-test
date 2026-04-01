@@ -8,6 +8,7 @@ import { ProgrammingGroupOfficialsList } from "../components/programacion/Progra
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { AddOfficialToGroupModal } from "../components/programacion/AddOfficialToGroupModal";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { getOfficialsForProgrammingGroup, isAutomaticProgrammingGroup } from "../lib/programmingGroups";
 
 export function ProgramacionGrupo() {
   const { groupId } = useParams();
@@ -20,10 +21,9 @@ export function ProgramacionGrupo() {
 
   const group = groups.find((g) => g.id === Number(groupId));
   const isLoadingGroupData = groups.length === 0 && myOfficials.length === 0;
+  const isAutomaticGroup = isAutomaticProgrammingGroup(Number(groupId));
 
-  const groupOfficials = myOfficials
-    .filter((f) => f.groupId === Number(groupId))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const groupOfficials = getOfficialsForProgrammingGroup(myOfficials, Number(groupId));
 
   const filteredOfficials = searchQuery
     ? groupOfficials.filter(
@@ -91,7 +91,7 @@ export function ProgramacionGrupo() {
             groupName={group.name}
             officialsCount={groupOfficials.length}
             isReadOnly={isReadOnly}
-            canAssignOfficials
+            canAssignOfficials={!isAutomaticGroup}
             onBack={() => navigate("/programacion")}
             onAddOfficial={() => setIsAddOfficialModalOpen(true)}
           />
@@ -115,7 +115,8 @@ export function ProgramacionGrupo() {
       <ProgrammingGroupOfficialsList
         officials={filteredOfficials}
         isReadOnly={isReadOnly}
-        canAssignOfficials
+        canAssignOfficials={!isAutomaticGroup}
+        showInactiveReason={isAutomaticGroup}
         formatContractHours={formatContractHours}
         onSelectOfficial={setSelectedOfficial}
         onRemoveFromGroup={handleRemoveFromGroup}
@@ -129,12 +130,14 @@ export function ProgramacionGrupo() {
         />
       )}
 
-      <AddOfficialToGroupModal
-        isOpen={isAddOfficialModalOpen}
-        onClose={() => setIsAddOfficialModalOpen(false)}
-        groupId={group.id}
-        groupName={group.name}
-      />
+      {!isAutomaticGroup && (
+        <AddOfficialToGroupModal
+          isOpen={isAddOfficialModalOpen}
+          onClose={() => setIsAddOfficialModalOpen(false)}
+          groupId={group.id}
+          groupName={group.name}
+        />
+      )}
     </div>
   );
 }

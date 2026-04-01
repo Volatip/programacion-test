@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext';
 import { usePeriods } from './PeriodsContext';
 import { fetchWithAuth, buildApiUrl } from '../lib/api';
 import { OfficialsContext, Funcionario, Group } from './OfficialsContextDefs';
+import { buildProgrammingGroups } from '../lib/programmingGroups';
 
 interface RawFuncionario {
   id: number;
@@ -18,6 +19,7 @@ interface RawFuncionario {
   specialty_sis?: string;
   lunch_time_minutes?: number;
   status?: string;
+  inactive_reason?: string | null;
   holiday_days?: number;
   administrative_days?: number;
   congress_days?: number;
@@ -47,17 +49,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   const [groups, setGroups] = useState<Group[]>([]);
 
   const groupsWithCurrentPeriodCounts = useMemo(() => {
-    const countsByGroupId = officials.reduce<Record<number, number>>((acc, official) => {
-      if (official.groupId > 0 && official.status === 'activo') {
-        acc[official.groupId] = (acc[official.groupId] || 0) + 1;
-      }
-      return acc;
-    }, {});
-
-    return groups.map((group) => ({
-      ...group,
-      count: countsByGroupId[group.id] || 0,
-    }));
+    return buildProgrammingGroups(groups, officials);
   }, [groups, officials]);
 
   useEffect(() => {
@@ -80,6 +72,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     sisSpecialty: item.specialty_sis || "Sin Especialidad",
     lunchTime: `${item.lunch_time_minutes || 0} min`,
     status: item.status || "activo", // Added status
+    inactiveReason: item.inactive_reason || undefined,
     
     holidayDays: item.holiday_days || 0,
     administrativeDays: item.administrative_days || 0,

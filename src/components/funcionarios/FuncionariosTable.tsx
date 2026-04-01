@@ -2,6 +2,7 @@ import type { Funcionario } from "../../context/OfficialsContextDefs";
 
 interface FuncionariosTableProps {
   officials: Funcionario[];
+  statusFilter: string;
   isReadOnly: boolean;
   canManageOfficials: boolean;
   getContractHoursDisplay: (func: Funcionario) => string;
@@ -11,12 +12,32 @@ interface FuncionariosTableProps {
 
 export function FuncionariosTable({
   officials,
+  statusFilter,
   isReadOnly,
   canManageOfficials,
   getContractHoursDisplay,
   onActivate,
   onDelete,
 }: FuncionariosTableProps) {
+  const showReasonColumn = statusFilter !== "activo";
+
+  const getInactiveReasonStyles = (reason?: string) => {
+    if (reason === "Renuncia") {
+      return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800";
+    }
+
+    if (
+      reason === "Cambio de servicio" ||
+      reason === "Comisión de Servicio" ||
+      reason === "Permiso sin Goce" ||
+      reason === "Comisión de Estudio"
+    ) {
+      return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800";
+    }
+
+    return "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700";
+  };
+
   if (officials.length === 0) {
     return (
       <div className="px-6 py-16 text-center border-b border-gray-100 dark:border-gray-700">
@@ -32,17 +53,18 @@ export function FuncionariosTable({
 
   return (
     <div className="overflow-x-auto w-full">
-      <table className="w-full text-sm text-left table-fixed">
+      <table className={`w-full text-sm text-left ${showReasonColumn ? "table-fixed" : "table-auto"}`}>
         <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium transition-colors">
           <tr>
-            <th className="px-4 py-3 w-[23%]">Funcionario</th>
-            <th className="px-4 py-3 w-[14%]">Título</th>
+            <th className={`px-4 py-3 ${showReasonColumn ? "w-[24%]" : "w-[25%]"}`}>Funcionario</th>
+            <th className={`px-4 py-3 ${showReasonColumn ? "w-[15%]" : "w-[15%]"}`}>Título</th>
             <th className="px-4 py-3 w-[8%]">Ley</th>
-            <th className="px-4 py-3 w-[11%]">Especialidad SIS</th>
-            <th className="px-4 py-3 w-[13%] min-w-[150px]">Hrs/Sem</th>
-            <th className="px-4 py-3 w-[7%]">Estado</th>
-            <th className="px-4 py-3 w-[7%]">Colación</th>
-            <th className="px-4 py-3 w-[9%]">Fecha RRHH</th>
+            <th className={`px-4 py-3 ${showReasonColumn ? "w-[12%]" : "w-[14%]"}`}>Especialidad SIS</th>
+            <th className={`px-4 py-3 ${showReasonColumn ? "w-[11%]" : "w-[10%]"}`}>Hrs/Sem</th>
+            <th className={`px-4 py-3 ${showReasonColumn ? "w-[7%]" : "w-[8%]"}`}>Estado</th>
+            {showReasonColumn && <th className="px-4 py-3 w-[12%]">Motivo</th>}
+            <th className="px-4 py-3 w-[7%] whitespace-nowrap">Colación</th>
+            <th className={`px-4 py-3 whitespace-nowrap ${showReasonColumn ? "w-[9%]" : "w-[8%]"}`}>Fecha RRHH</th>
             <th className="px-4 py-3 w-[10%] text-center">Acciones</th>
           </tr>
         </thead>
@@ -54,14 +76,14 @@ export function FuncionariosTable({
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium ${func.color} shrink-0`}>
                     {func.initial}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-gray-900 dark:text-white truncate" title={func.name}>
-                      {func.name}
+                   <div className="min-w-0 flex-1">
+                     <div className="font-medium text-gray-900 dark:text-white truncate" title={func.name}>
+                       {func.name}
+                     </div>
+                     <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{func.rut}</div>
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{func.rut}</div>
                   </div>
-                </div>
-              </td>
+                </td>
               <td className="px-4 py-3">
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-xs font-medium block w-fit max-w-full truncate ${
@@ -105,6 +127,20 @@ export function FuncionariosTable({
                   {func.status === "inactivo" ? "Inactivo" : func.status === "activo" ? "Activo" : func.status}
                 </span>
               </td>
+              {showReasonColumn && (
+                <td className="px-4 py-3">
+                  {func.status === "inactivo" && func.inactiveReason ? (
+                    <span
+                      className={`inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-medium ${getInactiveReasonStyles(func.inactiveReason)}`}
+                      title={`Motivo de inactividad: ${func.inactiveReason}`}
+                    >
+                      <span className="truncate">{func.inactiveReason}</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                  )}
+                </td>
+              )}
               <td className="px-4 py-3 text-gray-500 dark:text-gray-400 truncate" title={func.lunchTime}>
                 {func.lunchTime}
               </td>

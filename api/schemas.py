@@ -262,6 +262,7 @@ class FuncionarioConsolidated(BaseModel):
     hours_per_week: str # Consolidated string
     lunch_time_minutes: int
     status: str
+    inactive_reason: Optional[str] = None
     observations: str
     
     holiday_days: int

@@ -5,6 +5,7 @@ interface ProgrammingGroupOfficialsListProps {
   officials: Funcionario[];
   isReadOnly: boolean;
   canAssignOfficials: boolean;
+  showInactiveReason?: boolean;
   formatContractHours: (func: Funcionario) => string;
   onSelectOfficial: (official: Funcionario) => void;
   onRemoveFromGroup: (e: React.MouseEvent, official: Funcionario) => void;
@@ -14,6 +15,7 @@ export function ProgrammingGroupOfficialsList({
   officials,
   isReadOnly,
   canAssignOfficials,
+  showInactiveReason = false,
   formatContractHours,
   onSelectOfficial,
   onRemoveFromGroup,
@@ -61,6 +63,11 @@ export function ProgrammingGroupOfficialsList({
                 <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
                   {func.title} • {func.rut}
                 </div>
+                {showInactiveReason && func.inactiveReason && (
+                  <div className="text-sm text-amber-700 dark:text-amber-300 mt-1 truncate">
+                    Motivo: {func.inactiveReason}
+                  </div>
+                )}
               </div>
               <div className="text-right hidden sm:block">
                 <div className="text-xs text-gray-400 dark:text-gray-500">Horas Contrato</div>

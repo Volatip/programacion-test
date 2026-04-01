@@ -832,6 +832,59 @@ def test_delete_related_period_data_cleans_target_period_only(db_session) -> Non
     assert db_session.query(models.OfficialAudit).filter(models.OfficialAudit.period_id == keep_period.id).count() == 1
 
 
+def test_read_funcionarios_exposes_latest_inactive_reason_by_rut(db_session) -> None:
+    user = make_user(user_id=1, role="user")
+    period = make_period(name="2026-03", month=3, status="ACTIVO", is_active=True)
+    group = models.Group(name="Grupo A", user=user, period=period)
+    official_a = models.Funcionario(name="Ana Uno", title="Enfermera", rut="77", dv="K", period=period, status="inactivo")
+    official_b = models.Funcionario(name="Ana Dos", title="Enfermera", rut="77", dv="K", period=period, status="inactivo")
+
+    db_session.add_all([
+        user,
+        period,
+        group,
+        official_a,
+        official_b,
+    ])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user=user, funcionario=official_a, group=group),
+        models.UserOfficial(user=user, funcionario=official_b, group=group),
+        models.OfficialAudit(
+            funcionario_id=official_a.id,
+            funcionario_name=official_a.name,
+            rut=official_a.rut,
+            period=period,
+            user=user,
+            action="Dismiss",
+            reason="Renuncia",
+            created_at=datetime(2026, 3, 10, 9, 0, 0),
+        ),
+        models.OfficialAudit(
+            funcionario_id=official_b.id,
+            funcionario_name=official_b.name,
+            rut=official_b.rut,
+            period=period,
+            user=user,
+            action="Dismiss",
+            reason="Comisión de Estudio",
+            created_at=datetime(2026, 3, 11, 9, 0, 0),
+        ),
+    ])
+    db_session.commit()
+
+    result = funcionarios_router.read_funcionarios(
+        period_id=period.id,
+        db=db_session,
+        current_user=user,
+    )
+
+    assert len(result) == 1
+    assert result[0]["status"] == "inactivo"
+    assert result[0]["inactive_reason"] == "Comisión de Estudio"
+
+
 def test_require_active_user_rejects_inactive_accounts() -> None:
     inactive_user = make_user(user_id=6, role="user")
     inactive_user.status = "inactivo"

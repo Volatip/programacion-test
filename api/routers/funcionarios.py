@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 import logging
@@ -358,10 +358,48 @@ def format_laws_list(laws_list):
     # 3 or more: "A, B y C"
     return f"{', '.join(unique_laws[:-1])} y {unique_laws[-1]}"
 
-def consolidate_contracts(contracts, programmed_details=None):
+def get_latest_inactive_reasons_by_rut(
+    db: Session,
+    period_id: Optional[int],
+    ruts: Optional[list[str]] = None,
+) -> dict[str, str]:
+    if period_id is None:
+        return {}
+
+    latest_dismiss_subquery = db.query(
+        models.OfficialAudit.rut.label("rut"),
+        func.max(models.OfficialAudit.created_at).label("max_created_at"),
+    ).filter(
+        models.OfficialAudit.action == "Dismiss",
+        models.OfficialAudit.period_id == period_id,
+        models.OfficialAudit.rut.isnot(None),
+    )
+
+    if ruts:
+        latest_dismiss_subquery = latest_dismiss_subquery.filter(models.OfficialAudit.rut.in_(ruts))
+
+    latest_dismiss_subquery = latest_dismiss_subquery.group_by(models.OfficialAudit.rut).subquery()
+
+    rows = db.query(
+        models.OfficialAudit.rut,
+        models.OfficialAudit.reason,
+    ).join(
+        latest_dismiss_subquery,
+        and_(
+            models.OfficialAudit.rut == latest_dismiss_subquery.c.rut,
+            models.OfficialAudit.created_at == latest_dismiss_subquery.c.max_created_at,
+        ),
+    ).all()
+
+    return {rut: reason for rut, reason in rows if rut and reason}
+
+
+def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=None):
     grouped_people = {}
     if programmed_details is None:
         programmed_details = {}
+    if inactive_reasons is None:
+        inactive_reasons = {}
     
     for item in contracts:
         # Determine if item is Funcionario or tuple (Funcionario, group_id)
@@ -408,6 +446,7 @@ def consolidate_contracts(contracts, programmed_details=None):
                 "congress_days": contract.congress_days or 0,
                 "breastfeeding_time": contract.breastfeeding_time or 0,
                 "status": contract.status, # Added status
+                "inactive_reason": inactive_reasons.get(contract.rut),
                 
                 "is_active_roster": contract.is_active_roster, # Take from first contract
                 "is_scheduled": False,
@@ -473,6 +512,7 @@ def consolidate_contracts(contracts, programmed_details=None):
             "hours_per_week": hours_str,
             "lunch_time_minutes": person["lunch_minutes"],
             "status": person["status"], # Added status
+            "inactive_reason": person["inactive_reason"],
             "observations": obs_str, # Added observations
             
             "holiday_days": person["holiday_days"],
@@ -629,7 +669,8 @@ def read_funcionarios(
             group_id = rut_to_group.get(contract.rut)
             contracts_with_groups.append((contract, group_id))
         
-        consolidated = consolidate_contracts(contracts_with_groups, programmed_details)
+        inactive_reasons = get_latest_inactive_reasons_by_rut(db, period_id, linked_ruts)
+        consolidated = consolidate_contracts(contracts_with_groups, programmed_details, inactive_reasons)
         
         # Apply pagination manually on the aggregated list
         start = normalized_skip
@@ -782,7 +823,8 @@ def search_funcionarios(
             group_id = rut_to_group.get(contract.rut)
             contracts_with_groups.append((contract, group_id))
             
-        consolidated = consolidate_contracts(contracts_with_groups, programmed_details)
+        inactive_reasons = get_latest_inactive_reasons_by_rut(db, period_id, linked_ruts)
+        consolidated = consolidate_contracts(contracts_with_groups, programmed_details, inactive_reasons)
         return consolidated[:normalized_limit]
 
     # Case 2: Global Search (RRHH Database)
@@ -808,7 +850,8 @@ def search_funcionarios(
         
     all_contracts = query.order_by(models.Funcionario.rut).all()
     
-    consolidated = consolidate_contracts(all_contracts, programmed_details)
+    inactive_reasons = get_latest_inactive_reasons_by_rut(db, period_id, [contract.rut for contract in all_contracts if contract.rut])
+    consolidated = consolidate_contracts(all_contracts, programmed_details, inactive_reasons)
     return consolidated[:normalized_limit]
 
 @router.post("/{funcionario_id}/bind")

@@ -252,6 +252,7 @@ export function Funcionarios() {
 
         <FuncionariosTable
           officials={currentOfficials}
+          statusFilter={statusFilter}
           isReadOnly={isReadOnly}
           canManageOfficials
           getContractHoursDisplay={getContractHoursDisplay}

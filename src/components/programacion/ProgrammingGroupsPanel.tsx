@@ -2,6 +2,7 @@ import { BarChart, ChevronRight, Edit2, MoreVertical, Plus, Trash2, UserPlus } f
 import type React from "react";
 import { useNavigate } from "react-router-dom";
 import type { Group } from "../../context/OfficialsContextDefs";
+import { isAutomaticProgrammingGroup } from "../../lib/programmingGroups";
 
 interface ProgrammingGroupsPanelProps {
   groups: Group[];
@@ -63,6 +64,7 @@ export function ProgrammingGroupsPanel({
 
       <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4" ref={menuRef}>
         {groups.map((group) => (
+          
           <div
             key={group.id}
             className="relative group bg-gray-50 dark:bg-gray-700/50 hover:bg-white dark:hover:bg-gray-700 rounded-2xl border border-transparent hover:border-green-100 dark:hover:border-green-700 hover:shadow-lg transition-all duration-300"
@@ -72,10 +74,17 @@ export function ProgrammingGroupsPanel({
               className="p-5 cursor-pointer h-full flex flex-col justify-between"
             >
               <div className="flex justify-between items-start mb-2">
-                <span className="font-bold text-gray-800 dark:text-gray-100 text-lg line-clamp-1 group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">
-                  {group.name}
-                </span>
-                {!isReadOnly && (
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-bold text-gray-800 dark:text-gray-100 text-lg line-clamp-1 group-hover:text-green-700 dark:group-hover:text-green-400 transition-colors">
+                    {group.name}
+                  </span>
+                  {isAutomaticProgrammingGroup(group.id) && (
+                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap">
+                      Automático
+                    </span>
+                  )}
+                </div>
+                {!isReadOnly && !isAutomaticProgrammingGroup(group.id) && (
                   <button
                     onClick={(event) => onToggleMenu(event, group.id)}
                     className="p-1.5 -mr-2 -mt-2 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors opacity-0 group-hover:opacity-100"
@@ -91,7 +100,7 @@ export function ProgrammingGroupsPanel({
                 </span>
 
                 <div className="flex gap-2">
-                  {!isReadOnly && canAssignOfficials && (
+                  {!isReadOnly && canAssignOfficials && !isAutomaticProgrammingGroup(group.id) && (
                     <button
                       onClick={(event) => {
                         event.stopPropagation();
@@ -110,7 +119,7 @@ export function ProgrammingGroupsPanel({
               </div>
             </div>
 
-            {openMenuGroupId === group.id && !isReadOnly && (
+            {openMenuGroupId === group.id && !isReadOnly && !isAutomaticProgrammingGroup(group.id) && (
               <div className="absolute right-2 top-10 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <button
                   onClick={(event) => onEditGroup(event, group)}

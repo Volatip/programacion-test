@@ -15,6 +15,7 @@ export interface Funcionario {
   sisSpecialty: string;
   lunchTime: string;
   status: string; // Added status
+  inactiveReason?: string;
   // Added fields
   holidayDays: number;
   administrativeDays: number;
@@ -38,6 +39,7 @@ export interface Group {
   id: number;
   name: string;
   count: number;
+   isAutomatic?: boolean;
 }
 
 export interface OfficialsContextType {
