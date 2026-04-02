@@ -26,6 +26,12 @@ interface GeneralRow {
   user_name: string;
   is_scheduled: boolean;
   programmed_label: string;
+  contracts: {
+    id: number;
+    law_code: string;
+    hours: number;
+    observations: string;
+  }[];
 }
 
 function getStatusBadgeClass(status: string) {
@@ -209,7 +215,26 @@ export function General() {
     breastfeedingTime: 0,
     lastUpdated: "-",
     observations: "",
+    contracts: row.contracts ?? [],
   });
+
+  const handleNextOfficial = () => {
+    if (!selectedOfficial) return;
+
+    const currentIndex = filteredRows.findIndex((row) => row.funcionario_id === selectedOfficial.id);
+    if (currentIndex === -1) {
+      setSelectedOfficial(null);
+      return;
+    }
+
+    const nextRow = filteredRows[currentIndex + 1];
+    if (!nextRow) {
+      setSelectedOfficial(null);
+      return;
+    }
+
+    setSelectedOfficial(buildOfficialFromRow(nextRow));
+  };
 
   return (
     <div className="space-y-6">
@@ -398,6 +423,7 @@ export function General() {
         <ProgrammingModal
           funcionario={selectedOfficial}
           onClose={() => setSelectedOfficial(null)}
+          onNext={handleNextOfficial}
         />
       )}
     </div>

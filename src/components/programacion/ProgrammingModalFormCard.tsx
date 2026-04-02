@@ -62,6 +62,7 @@ interface ProgrammingModalFormCardProps {
   onClose: () => void;
   onDelete: () => void;
   onSaveAndNext: (event: MouseEvent<HTMLButtonElement>) => void;
+  onNext?: () => void;
   programmingId: number | null;
   isSubmitting: boolean;
   isAvailableNegative: boolean;
@@ -119,6 +120,7 @@ export function ProgrammingModalFormCard({
   onClose,
   onDelete,
   onSaveAndNext,
+  onNext,
   programmingId,
   isSubmitting,
   isAvailableNegative,
@@ -221,6 +223,7 @@ export function ProgrammingModalFormCard({
           onClose={onClose}
           onDelete={onDelete}
           onSaveAndNext={onSaveAndNext}
+          onNext={onNext}
           isReadOnly={isReadOnly}
           programmingId={programmingId}
           isSubmitting={isSubmitting}

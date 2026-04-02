@@ -42,7 +42,7 @@ export function Login() {
     try {
       await login(rut, password);
       const storedUser = JSON.parse(getStoredSession().user || 'null') as { role?: string } | null;
-      navigate(isSupervisorRole(storedUser?.role) ? '/funcionarios' : '/');
+      navigate('/');
     } catch (err) {
       setError('Credenciales inválidas. Por favor intente nuevamente.');
       console.error(err);

@@ -1,11 +1,12 @@
 import type React from "react";
-import { Printer, RefreshCw, Save, Trash2 } from "lucide-react";
+import { ArrowRight, Printer, RefreshCw, Save, Trash2 } from "lucide-react";
 
 interface ProgrammingActionBarProps {
   onPrint: () => void;
   onClose: () => void;
   onDelete: () => void;
   onSaveAndNext: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onNext?: () => void;
   isReadOnly: boolean;
   programmingId: number | null;
   isSubmitting: boolean;
@@ -19,6 +20,7 @@ export function ProgrammingActionBar({
   onClose,
   onDelete,
   onSaveAndNext,
+  onNext,
   isReadOnly,
   programmingId,
   isSubmitting,
@@ -78,6 +80,16 @@ export function ProgrammingActionBar({
               </button>
             )}
           </>
+        )}
+        {hasNext && onNext && (
+          <button
+            type="button"
+            onClick={onNext}
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-all shadow-sm hover:shadow active:scale-95"
+          >
+            <ArrowRight className="w-4 h-4" />
+            Siguiente
+          </button>
         )}
       </div>
     </div>

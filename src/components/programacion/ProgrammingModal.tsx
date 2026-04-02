@@ -666,6 +666,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
             onClose={onClose}
             onDelete={handleDeleteProgramming}
             onSaveAndNext={(e) => handleSave(e, true)}
+            onNext={onNext}
             programmingId={programmingId}
             isSubmitting={isSubmitting}
             isAvailableNegative={isAvailableNegative}

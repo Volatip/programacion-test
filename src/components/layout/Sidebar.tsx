@@ -13,8 +13,8 @@ export function Sidebar() {
     { to: "/periodos", icon: History, label: "Periodos", roles: ['admin', 'administrador'] },
     { to: "/rrhh", icon: FileSpreadsheet, label: "RRHH", roles: ['admin', 'administrador'] },
     { to: "/carga", icon: Upload, label: "Carga", roles: ['admin', 'administrador'] },
-    { to: "/funcionarios", icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
     { to: "/general", icon: TableProperties, label: "General", roles: ['admin', 'administrador', 'supervisor'] },
+    { to: "/funcionarios", icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
     { to: "/programacion", icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
   ];
 

@@ -298,6 +298,7 @@ class GeneralOfficialRow(BaseModel):
     user_name: str
     is_scheduled: bool
     programmed_label: str
+    contracts: list[ContractDetail] = []
 
     class Config:
         from_attributes = True

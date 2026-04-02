@@ -88,6 +88,7 @@ def read_general_rows(
                 "status": contract.status or "activo",
                 "laws": [],
                 "hours": [],
+                "contracts": [],
                 "is_scheduled": False,
                 "user_ids": [],
                 "user_names": [],
@@ -129,6 +130,14 @@ def read_general_rows(
             entry = grouped_entries[entry_key]
             entry["laws"].append(contract.law_code)
             entry["hours"].append(contract.hours_per_week)
+            entry["contracts"].append(
+                {
+                    "id": contract.id,
+                    "law_code": contract.law_code,
+                    "hours": contract.hours_per_week,
+                    "observations": contract.observations,
+                }
+            )
             if not entry["rut"] and contract.rut:
                 entry["rut"] = contract.rut
             if contract.specialty_sis:
@@ -151,6 +160,7 @@ def read_general_rows(
             "user_name": ", ".join(entry["user_names"]),
             "is_scheduled": entry["is_scheduled"],
             "programmed_label": "Programado" if entry["is_scheduled"] else "No Programado",
+            "contracts": entry["contracts"],
         }
         for entry in grouped_entries.values()
     ]
