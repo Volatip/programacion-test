@@ -82,8 +82,12 @@ describe("General page", () => {
     expect(screen.getByText("Help: general")).toBeTruthy();
   });
 
-  it("blocks the table for supervisor until a user is selected", () => {
+  it("allows the general table for supervisor without selecting a user", async () => {
     useAuthMock.mockReturnValue({ user: { role: "supervisor" } });
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
     useSupervisorScopeMock.mockReturnValue({
       isSupervisor: true,
       isScopeReady: false,
@@ -98,8 +102,8 @@ describe("General page", () => {
     );
 
     expect(screen.getByText("Supervisor Scope Panel")).toBeTruthy();
-    expect(screen.queryByPlaceholderText(/buscar funcionario/i)).toBeNull();
-    expect(fetchWithAuthMock).not.toHaveBeenCalled();
+    expect(screen.getByPlaceholderText(/buscar funcionario/i)).toBeTruthy();
+    await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledWith("/general?period_id=7"));
   });
 
   it("combines main search with advanced filters", async () => {
