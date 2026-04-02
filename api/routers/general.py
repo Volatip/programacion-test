@@ -143,6 +143,7 @@ def read_general_rows(
             if contract.specialty_sis:
                 entry["specialty_sis"] = contract.specialty_sis
             if contract.id in scheduled_details:
+                entry["funcionario_id"] = contract.id
                 entry["is_scheduled"] = True
 
     rows = [

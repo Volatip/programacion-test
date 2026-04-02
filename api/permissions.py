@@ -97,13 +97,38 @@ class PermissionChecker:
         Check if the user has permission to edit the programming of a specific official.
         """
         PermissionChecker.require_read_only_access(user)
-        try:
-            return PermissionChecker.check_can_access_funcionario(user, funcionario_id, db)
-        except HTTPException:
+
+        funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
+        if not funcionario:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tiene permiso para editar la programación de este funcionario. Agréguelo a su lista primero."
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Funcionario not found"
             )
+
+        direct_assignment = db.query(models.UserOfficial).filter(
+            models.UserOfficial.user_id == user.id,
+            models.UserOfficial.funcionario_id == funcionario_id,
+        ).first()
+        if direct_assignment:
+            return True
+
+        funcionario_rut = (funcionario.rut or "").strip()
+        if funcionario_rut and funcionario.period_id is not None:
+            scoped_assignment = db.query(models.UserOfficial).join(
+                models.Funcionario,
+                models.Funcionario.id == models.UserOfficial.funcionario_id,
+            ).filter(
+                models.UserOfficial.user_id == user.id,
+                models.Funcionario.rut == funcionario_rut,
+                models.Funcionario.period_id == funcionario.period_id,
+            ).first()
+            if scoped_assignment:
+                return True
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No se pudo guardar la programación porque el funcionario no está agregado en Funcionarios para este perfil."
+        )
 
     @staticmethod
     def check_can_bind_funcionario(user: models.User, funcionario_id: int, db: Session):

@@ -520,6 +520,41 @@ def test_supervisor_cannot_write_funcionarios_or_programming(db_session) -> None
     assert programming_exc.value.detail == "El rol supervisor solo puede acceder en modo lectura."
 
 
+def test_admin_must_bind_funcionario_before_saving_programming(db_session) -> None:
+    admin = make_user(user_id=530, role="admin")
+    period = make_period(name="2027-02", month=2, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Funcionario Externo",
+        title="Enfermero",
+        rut="77000001",
+        dv="K",
+        period_id=1,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([admin, period, funcionario])
+    db_session.flush()
+    funcionario.period_id = period.id
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as programming_exc:
+        programming_router.create_programming(
+            programming=schemas.ProgrammingCreate(
+                funcionario_id=funcionario.id,
+                period_id=period.id,
+                assigned_status="Activo",
+                prais=False,
+                selected_process="Consulta",
+                items=[],
+            ),
+            db=db_session,
+            current_user=admin,
+        )
+
+    assert programming_exc.value.status_code == 403
+    assert programming_exc.value.detail == "No se pudo guardar la programación porque el funcionario no está agregado en Funcionarios para este perfil."
+
+
 def test_read_general_rows_returns_all_user_assignments_for_admin(db_session) -> None:
     admin = make_user(user_id=500, role="admin")
     owner_a = make_user(user_id=501, role="user")

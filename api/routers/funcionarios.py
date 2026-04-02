@@ -482,6 +482,7 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
         # Check if this contract is programmed
         if contract.id in programmed_details:
              details = programmed_details[contract.id]
+             grouped_people[key]["id"] = contract.id
              grouped_people[key]["is_scheduled"] = True
              grouped_people[key]["programming_id"] = details["id"]
              grouped_people[key]["programming_updated_at"] = details["updated_at"]
