@@ -103,8 +103,10 @@ export function FuncionariosTable({
               <td className="px-4 py-3 text-blue-600 dark:text-blue-400 font-medium truncate" title={func.law}>
                 {func.law}
               </td>
-              <td className="px-4 py-3 text-gray-600 dark:text-gray-300 truncate" title={func.sisSpecialty}>
-                {func.sisSpecialty}
+              <td className="px-4 py-3 text-gray-600 dark:text-gray-300" title={func.sisSpecialty}>
+                <div className={`truncate ${showReasonColumn ? "max-w-[180px]" : "max-w-[160px]"}`}>
+                  {func.sisSpecialty}
+                </div>
               </td>
               <td
                 className="px-4 py-3 text-gray-600 dark:text-gray-300 truncate"
