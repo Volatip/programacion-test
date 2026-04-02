@@ -9,6 +9,7 @@ interface ModalProps {
   children: React.ReactNode;
   className?: string;
   showCloseButton?: boolean;
+  resetScrollKey?: string | number | null;
 }
 
 export function Modal({ 
@@ -17,9 +18,11 @@ export function Modal({
   title, 
   children, 
   className = "max-w-lg",
-  showCloseButton = true
+  showCloseButton = true,
+  resetScrollKey = null,
 }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -36,6 +39,11 @@ export function Modal({
       document.body.style.overflow = "unset";
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [isOpen, resetScrollKey]);
 
   if (!isOpen) return null;
 
@@ -64,7 +72,7 @@ export function Modal({
             )}
           </div>
         )}
-        <div className="overflow-y-auto flex-1">
+        <div ref={scrollContainerRef} className="overflow-y-auto flex-1">
             {children}
         </div>
       </div>

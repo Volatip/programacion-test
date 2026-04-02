@@ -601,6 +601,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
       onClose={onClose}
       title={modalTitle}
       className="max-w-[90rem]"
+      resetScrollKey={funcionario.id}
     >
         <div className="p-6 space-y-4">
           <ProgrammingSummaryCard
