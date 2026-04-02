@@ -32,6 +32,21 @@ def test_read_contextual_help_page_returns_seeded_content_for_authenticated_user
     assert payload.sections[0].position == 1
 
 
+def test_read_contextual_help_page_returns_seeded_general_content(db_session) -> None:
+    ensure_default_contextual_help(db_session)
+
+    payload = contextual_help_router.read_contextual_help_page(
+        "general",
+        db=db_session,
+        current_user=make_user(user_id=10, role="supervisor"),
+    )
+
+    assert payload.slug == "general"
+    assert payload.page_name == "General"
+    assert len(payload.sections) == 3
+    assert any(section.title == "Usuario y Programado" for section in payload.sections)
+
+
 def test_list_contextual_help_pages_requires_admin(db_session) -> None:
     with pytest.raises(Exception) as exc_info:
         contextual_help_router.list_contextual_help_pages(

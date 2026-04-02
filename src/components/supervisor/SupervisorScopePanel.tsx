@@ -28,7 +28,9 @@ export function SupervisorScopePanel({ blocking = false }: { blocking?: boolean 
             <h2 className="text-base font-semibold">Supervisión por usuario</h2>
           </div>
           <p className="text-sm text-amber-900/80 dark:text-amber-100/80">
-            Selecciona el usuario supervisado para acotar Funcionarios, Programación, Programados, No Programados y Grupos.
+            {blocking
+              ? "Selecciona el usuario supervisado para acotar Funcionarios, Programación, Programados, No Programados y Grupos."
+              : "Puedes seleccionar un usuario supervisado para acotar la vista. Si no seleccionas ninguno, verás el consolidado general completo."}
           </p>
           {selectedUser ? (
             <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
@@ -36,7 +38,7 @@ export function SupervisorScopePanel({ blocking = false }: { blocking?: boolean 
             </p>
           ) : (
             <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
-              No hay un usuario supervisado seleccionado.
+              {blocking ? "No hay un usuario supervisado seleccionado." : "Vista general sin filtro por usuario."}
             </p>
           )}
         </div>

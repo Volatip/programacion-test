@@ -3,6 +3,7 @@ import type React from "react";
 
 interface ProgrammingModalHeaderProps {
   otherProgrammers: string[];
+  showOtherProgrammersNotice?: boolean;
   contractHoursDisplayText: React.ReactNode;
   totalScheduledHours: number;
   availableColorClass: string;
@@ -11,6 +12,7 @@ interface ProgrammingModalHeaderProps {
 
 export function ProgrammingModalHeader({
   otherProgrammers,
+  showOtherProgrammersNotice = true,
   contractHoursDisplayText,
   totalScheduledHours,
   availableColorClass,
@@ -21,7 +23,7 @@ export function ProgrammingModalHeader({
       <span className="text-lg font-semibold text-gray-800 dark:text-gray-100">Programación de Funcionario</span>
 
       <div className="flex items-center gap-4">
-        {otherProgrammers.length > 0 && (
+        {showOtherProgrammersNotice && otherProgrammers.length > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg border border-blue-100 dark:border-blue-800 text-sm animate-in fade-in zoom-in duration-300 shadow-sm">
             <Info className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="font-medium text-xs">Este funcionario también lo programó {otherProgrammers.join(", ")}</span>

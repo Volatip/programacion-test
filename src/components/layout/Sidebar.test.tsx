@@ -27,6 +27,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("link", { name: /inicio/i })).toBeTruthy();
     expect(screen.getByRole("link", { name: /funcionarios/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /general/i })).toBeTruthy();
     expect(screen.getByRole("link", { name: /programación/i })).toBeTruthy();
     expect(screen.queryByText("RRHH")).toBeNull();
     expect(screen.queryByText("Carga")).toBeNull();

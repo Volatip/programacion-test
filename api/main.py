@@ -10,7 +10,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from .limiter import limiter
-from .routers import users, funcionarios, stats, groups, config, periods, programming, contextual_help
+from .routers import users, funcionarios, stats, groups, config, periods, programming, contextual_help, general
 from . import models, database, auth, runtime_config
 from .contextual_help_defaults import ensure_default_contextual_help
 from .websockets import manager
@@ -243,6 +243,7 @@ app.include_router(config.router, prefix="/api/config", tags=["config"])
 app.include_router(periods.router, prefix="/api/periods", tags=["periods"])
 app.include_router(programming.router, prefix="/api/programming", tags=["programming"])
 app.include_router(contextual_help.router, prefix="/api/contextual-help", tags=["contextual-help"])
+app.include_router(general.router, prefix="/api/general", tags=["general"])
 
 @app.websocket("/ws/info-bar")
 async def websocket_endpoint(websocket: WebSocket):

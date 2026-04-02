@@ -67,6 +67,16 @@ DEFAULT_CONTEXTUAL_HELP_PAGES: list[dict[str, object]] = [
         ],
     },
     {
+        "slug": "general",
+        "page_name": "General",
+        "description": "Entrega una vista consolidada por usuario del período seleccionado, combinando datos contractuales, asignación operativa y estado de programación.",
+        "sections": [
+            {"title": "Búsqueda y filtros avanzados", "content": "El buscador principal revisa funcionario, título, ley, especialidad, estado, usuario y condición de programación. Los filtros avanzados se combinan entre sí para acotar el consolidado por columnas específicas."},
+            {"title": "Lectura de columnas", "content": "Título, Ley y Especialidad SIS resumen el perfil contractual consolidado. Hrs/Sem agrupa las cargas horarias detectadas para la persona en el período. Estado refleja la condición operativa informada por RRHH."},
+            {"title": "Usuario y Programado", "content": "Usuario muestra a qué cuentas activas quedó asociado cada funcionario; si aparecen varios nombres, la persona tiene más de una asignación vigente. Programado indica si al menos uno de sus contratos del período ya posee programación registrada."},
+        ],
+    },
+    {
         "slug": "programacion",
         "page_name": "Programación",
         "description": "Organiza funcionarios en grupos y prepara la asignación de actividades del período activo.",

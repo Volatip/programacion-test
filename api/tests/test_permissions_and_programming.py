@@ -10,6 +10,7 @@ from starlette.datastructures import Headers, UploadFile
 from api import auth, main, models, runtime_config, schemas
 from api.routers import config as config_router
 from api.routers import funcionarios as funcionarios_router
+from api.routers import general as general_router
 from api.routers import groups as groups_router
 from api.routers import programming as programming_router
 from api.routers import stats as stats_router
@@ -517,6 +518,136 @@ def test_supervisor_cannot_write_funcionarios_or_programming(db_session) -> None
 
     assert programming_exc.value.status_code == 403
     assert programming_exc.value.detail == "El rol supervisor solo puede acceder en modo lectura."
+
+
+def test_read_general_rows_returns_all_user_assignments_for_admin(db_session) -> None:
+    admin = make_user(user_id=500, role="admin")
+    owner_a = make_user(user_id=501, role="user")
+    owner_b = make_user(user_id=502, role="medical_coordinator")
+    period = make_period(name="2026-12", month=12, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, owner_a, owner_b, period])
+    db_session.flush()
+
+    funcionario_a_contract_1 = models.Funcionario(
+        name="Andrea Pérez",
+        title="Enfermero",
+        rut="76000001",
+        dv="K",
+        period_id=period.id,
+        law_code="19664",
+        hours_per_week=22,
+        specialty_sis="Urgencia",
+        status="activo",
+        is_active_roster=True,
+    )
+    funcionario_a_contract_2 = models.Funcionario(
+        name="Andrea Pérez",
+        title="Enfermero",
+        rut="76000001",
+        dv="K",
+        period_id=period.id,
+        law_code="15076",
+        hours_per_week=11,
+        specialty_sis="Urgencia",
+        status="activo",
+        is_active_roster=True,
+    )
+    funcionario_b = models.Funcionario(
+        name="Bruno Soto",
+        title="Médico(a) Cirujano(a)",
+        rut="76000002",
+        dv="K",
+        period_id=period.id,
+        law_code="15076",
+        hours_per_week=44,
+        specialty_sis="Cardiología",
+        status="inactivo",
+        is_active_roster=False,
+    )
+    db_session.add_all([funcionario_a_contract_1, funcionario_a_contract_2, funcionario_b])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user_id=owner_a.id, funcionario_id=funcionario_a_contract_1.id),
+        models.UserOfficial(user_id=owner_b.id, funcionario_id=funcionario_a_contract_2.id),
+        models.UserOfficial(user_id=owner_b.id, funcionario_id=funcionario_b.id),
+        models.Programming(
+            funcionario_id=funcionario_a_contract_2.id,
+            period_id=period.id,
+            assigned_status="Activo",
+            selected_process="Consulta",
+            created_by_id=owner_a.id,
+            updated_by_id=owner_a.id,
+        ),
+    ])
+    db_session.commit()
+
+    payload = general_router.read_general_rows(period_id=period.id, db=db_session, current_user=admin)
+
+    assert len(payload) == 2
+    andrea = next(item for item in payload if item["funcionario"] == "Andrea Pérez")
+    bruno = next(item for item in payload if item["funcionario"] == "Bruno Soto")
+
+    assert andrea["law_code"] == "15076 y 19664"
+    assert andrea["hours_per_week"] == "22 hrs y 11 hrs"
+    assert andrea["user_name"] == "User 501, User 502"
+    assert andrea["user_ids"] == [owner_a.id, owner_b.id]
+    assert andrea["programmed_label"] == "Programado"
+    assert bruno["user_name"] == "User 502"
+    assert bruno["programmed_label"] == "No Programado"
+
+
+def test_read_general_rows_allows_supervisor_explicit_user_scope(db_session) -> None:
+    supervisor = make_user(user_id=510, role="supervisor")
+    owner_a = make_user(user_id=511, role="user")
+    owner_b = make_user(user_id=512, role="user")
+    period = make_period(name="2027-01", month=1, status="ACTIVO", is_active=True)
+    db_session.add_all([supervisor, owner_a, owner_b, period])
+    db_session.flush()
+
+    funcionario_a = models.Funcionario(
+        name="Funcionario A",
+        title="Enfermero",
+        rut="76500001",
+        dv="K",
+        period_id=period.id,
+        law_code="19664",
+        hours_per_week=44,
+        specialty_sis="UPC",
+        status="activo",
+        is_active_roster=True,
+    )
+    funcionario_b = models.Funcionario(
+        name="Funcionario B",
+        title="Enfermero",
+        rut="76500002",
+        dv="K",
+        period_id=period.id,
+        law_code="19664",
+        hours_per_week=33,
+        specialty_sis="Urgencia",
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([funcionario_a, funcionario_b])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user_id=owner_a.id, funcionario_id=funcionario_a.id),
+        models.UserOfficial(user_id=owner_b.id, funcionario_id=funcionario_b.id),
+    ])
+    db_session.commit()
+
+    payload = general_router.read_general_rows(
+        period_id=period.id,
+        user_id=owner_a.id,
+        db=db_session,
+        current_user=supervisor,
+    )
+
+    assert len(payload) == 1
+    assert payload[0]["funcionario"] == "Funcionario A"
+    assert payload[0]["user_id"] == owner_a.id
 
 
 def test_search_funcionarios_global_scope_excludes_unassigned_officials_for_non_admin(db_session) -> None:

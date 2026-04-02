@@ -562,6 +562,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
   const modalTitle = (
     <ProgrammingModalHeader
       otherProgrammers={otherProgrammers}
+      showOtherProgrammersNotice={!isSupervisorRole(user?.role)}
       contractHoursDisplayText={contractHoursDisplayText}
       totalScheduledHours={totalScheduledHours}
       availableColorClass={availableColorClass}

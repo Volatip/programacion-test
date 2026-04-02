@@ -15,6 +15,7 @@ const Carga = lazy(() => import("./pages/Carga").then((module) => ({ default: mo
 const Programacion = lazy(() => import("./pages/Programacion").then((module) => ({ default: module.Programacion })));
 const ProgramacionGrupo = lazy(() => import("./pages/ProgramacionGrupo").then((module) => ({ default: module.ProgramacionGrupo })));
 const ProgramacionLista = lazy(() => import("./pages/ProgramacionLista").then((module) => ({ default: module.ProgramacionLista })));
+const General = lazy(() => import("./pages/General").then((module) => ({ default: module.General })));
 
 function lazyPage(element: ReactNode) {
   return <Suspense fallback={null}>{element}</Suspense>;
@@ -43,6 +44,9 @@ function App() {
               </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin", "medical_coordinator", "non_medical_coordinator", "supervisor", "user"]} />}>
                 <Route path="/funcionarios" element={<Funcionarios />} />
+                <Route element={<ProtectedRoute allowedRoles={["admin", "supervisor"]} />}>
+                  <Route path="/general" element={lazyPage(<General />)} />
+                </Route>
                 <Route path="/programacion" element={lazyPage(<Programacion />)} />
                 <Route path="/programacion/grupo/:groupId" element={lazyPage(<ProgramacionGrupo />)} />
                 <Route path="/programacion/programados" element={lazyPage(<ProgramacionLista type="scheduled" />)} />

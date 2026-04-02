@@ -283,6 +283,25 @@ class FuncionarioConsolidated(BaseModel):
     class Config:
         from_attributes = True
 
+
+class GeneralOfficialRow(BaseModel):
+    funcionario_id: int
+    funcionario: str
+    title: str
+    rut: str
+    law_code: str
+    specialty_sis: str
+    hours_per_week: str
+    status: str
+    user_id: Optional[int] = None
+    user_ids: list[int] = []
+    user_name: str
+    is_scheduled: bool
+    programmed_label: str
+
+    class Config:
+        from_attributes = True
+
 # ==========================================
 # Programming
 # ==========================================
