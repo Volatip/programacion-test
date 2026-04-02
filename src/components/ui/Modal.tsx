@@ -42,7 +42,15 @@ export function Modal({
 
   useEffect(() => {
     if (!isOpen) return;
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    if (typeof scrollContainer.scrollTo === "function") {
+      scrollContainer.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
+
+    scrollContainer.scrollTop = 0;
   }, [isOpen, resetScrollKey]);
 
   if (!isOpen) return null;
