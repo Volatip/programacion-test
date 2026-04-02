@@ -4,6 +4,7 @@ import { AuthProvider } from "../context/AuthContext";
 import { PeriodsProvider } from "../context/PeriodsContext";
 import { ProgrammingCacheProvider } from "../context/ProgrammingCacheContext";
 import { WebSocketProvider } from "../context/WebSocketContext";
+import { SupervisorScopeProvider } from "../context/SupervisorScopeContext";
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -12,15 +13,17 @@ interface AppProvidersProps {
 export function AppProviders({ children }: AppProvidersProps) {
   return (
     <AuthProvider>
-      <WebSocketProvider>
-        <PeriodsProvider>
-          <OfficialsProvider>
-            <ProgrammingCacheProvider>
-              {children}
-            </ProgrammingCacheProvider>
-          </OfficialsProvider>
-        </PeriodsProvider>
-      </WebSocketProvider>
+      <SupervisorScopeProvider>
+        <WebSocketProvider>
+          <PeriodsProvider>
+            <OfficialsProvider>
+              <ProgrammingCacheProvider>
+                {children}
+              </ProgrammingCacheProvider>
+            </OfficialsProvider>
+          </PeriodsProvider>
+        </WebSocketProvider>
+      </SupervisorScopeProvider>
     </AuthProvider>
   );
 }

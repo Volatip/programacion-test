@@ -16,9 +16,7 @@ def read_groups(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
-    effective_user_id = current_user.id
-    if user_id is not None:
-        effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
+    effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
 
     # Query groups with a count of associated officials (unique persons by RUT)
     query = db.query(
@@ -32,7 +30,8 @@ def read_groups(
         (models.UserOfficial.funcionario_id == models.Funcionario.id) & (models.Funcionario.status == 'activo') # Filter active only
     ).group_by(models.Group.id)
 
-    query = query.filter(models.Group.user_id == effective_user_id)
+    if effective_user_id is not None:
+        query = query.filter(models.Group.user_id == effective_user_id)
 
     if period_id is not None:
         query = query.filter(models.Group.period_id == period_id)
@@ -51,6 +50,7 @@ def create_group(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
+    PermissionChecker.require_read_only_access(current_user)
     owner_id = current_user.id if group.user_id is None else PermissionChecker.resolve_user_scope(current_user, group.user_id)
 
     target_period_id = group.period_id
@@ -75,6 +75,7 @@ def update_group(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
+    PermissionChecker.require_read_only_access(current_user)
     db_group = db.query(models.Group).filter(models.Group.id == group_id).first()
     if not db_group:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -95,6 +96,7 @@ def delete_group(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
+    PermissionChecker.require_read_only_access(current_user)
     db_group = db.query(models.Group).filter(models.Group.id == group_id).first()
     if not db_group:
         raise HTTPException(status_code=404, detail="Group not found")

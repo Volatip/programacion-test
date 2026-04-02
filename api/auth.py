@@ -50,6 +50,34 @@ def normalize_rut(rut: str) -> str:
     return f"{formatted_body}-{dv}"
 
 
+def validate_rut(rut: str) -> bool:
+    cleaned_rut = "".join(char for char in rut.strip() if char not in ".- ").upper()
+    if len(cleaned_rut) < 2:
+        return False
+
+    body = cleaned_rut[:-1]
+    dv = cleaned_rut[-1]
+
+    if not body.isdigit():
+        return False
+
+    total = 0
+    multiplier = 2
+    for digit in reversed(body):
+        total += int(digit) * multiplier
+        multiplier = 2 if multiplier == 7 else multiplier + 1
+
+    expected_value = 11 - (total % 11)
+    if expected_value == 11:
+        expected_dv = "0"
+    elif expected_value == 10:
+        expected_dv = "K"
+    else:
+        expected_dv = str(expected_value)
+
+    return dv == expected_dv
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:

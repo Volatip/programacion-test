@@ -29,10 +29,11 @@ export interface DashboardStats {
 
 interface UseDashboardStatsOptions {
   periodId?: number;
+  userId?: number;
   enabled?: boolean;
 }
 
-export function useDashboardStats({ periodId, enabled = true }: UseDashboardStatsOptions) {
+export function useDashboardStats({ periodId, userId, enabled = true }: UseDashboardStatsOptions) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,9 @@ export function useDashboardStats({ periodId, enabled = true }: UseDashboardStat
       const queryParams = new URLSearchParams();
       if (periodId) {
         queryParams.append("period_id", periodId.toString());
+      }
+      if (userId) {
+        queryParams.append("user_id", userId.toString());
       }
 
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -100,7 +104,7 @@ export function useDashboardStats({ periodId, enabled = true }: UseDashboardStat
     } finally {
       setLoading(false);
     }
-  }, [enabled, periodId]);
+  }, [enabled, periodId, userId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

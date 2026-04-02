@@ -29,19 +29,25 @@ function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/" element={<Home />} />
+              <Route element={<ProtectedRoute allowedRoles={["admin", "medical_coordinator", "non_medical_coordinator", "supervisor", "user"]} />}>
+                <Route path="/" element={<Home />} />
+              </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
                 <Route path="/usuarios" element={lazyPage(<Users />)} />
                 <Route path="/admin/ayudas-contextuales" element={lazyPage(<ContextualHelpAdmin />)} />
                 <Route path="/rrhh" element={lazyPage(<RRHH />)} />
                 <Route path="/carga" element={lazyPage(<Carga />)} />
               </Route>
-              <Route path="/periodos" element={<Periodos />} />
-              <Route path="/funcionarios" element={<Funcionarios />} />
-              <Route path="/programacion" element={lazyPage(<Programacion />)} />
-              <Route path="/programacion/grupo/:groupId" element={lazyPage(<ProgramacionGrupo />)} />
-              <Route path="/programacion/programados" element={lazyPage(<ProgramacionLista type="scheduled" />)} />
-              <Route path="/programacion/no-programados" element={lazyPage(<ProgramacionLista type="unscheduled" />)} />
+              <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+                <Route path="/periodos" element={<Periodos />} />
+              </Route>
+              <Route element={<ProtectedRoute allowedRoles={["admin", "medical_coordinator", "non_medical_coordinator", "supervisor", "user"]} />}>
+                <Route path="/funcionarios" element={<Funcionarios />} />
+                <Route path="/programacion" element={lazyPage(<Programacion />)} />
+                <Route path="/programacion/grupo/:groupId" element={lazyPage(<ProgramacionGrupo />)} />
+                <Route path="/programacion/programados" element={lazyPage(<ProgramacionLista type="scheduled" />)} />
+                <Route path="/programacion/no-programados" element={lazyPage(<ProgramacionLista type="unscheduled" />)} />
+              </Route>
             </Route>
           </Route>
         </Routes>

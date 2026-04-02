@@ -7,14 +7,14 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const navItems = [
-    { to: "/", icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator'] },
+    { to: "/", icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
     { to: "/usuarios", icon: Users, label: "Usuarios", roles: ['admin', 'administrador'] },
     { to: "/admin/ayudas-contextuales", icon: CircleHelp, label: "Ayudas", roles: ['admin', 'administrador'] },
     { to: "/periodos", icon: History, label: "Periodos", roles: ['admin', 'administrador'] },
     { to: "/rrhh", icon: FileSpreadsheet, label: "RRHH", roles: ['admin', 'administrador'] },
     { to: "/carga", icon: Upload, label: "Carga", roles: ['admin', 'administrador'] },
-    { to: "/funcionarios", icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator'] },
-    { to: "/programacion", icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator'] },
+    { to: "/funcionarios", icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
+    { to: "/programacion", icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
   ];
 
   const filteredNavItems = navItems.filter(item => 

@@ -396,6 +396,7 @@ def read_programmings(
     skip: int = 0, 
     limit: int = DEFAULT_PROGRAMMING_LIMIT, 
     period_id: Optional[int] = None,
+    user_id: Optional[int] = None,
     funcionario_id: Optional[int] = None,
     funcionario_ids: Optional[List[int]] = Query(default=None),
     db: Session = Depends(database.get_db),
@@ -417,11 +418,13 @@ def read_programmings(
         joinedload(models.Programming.updated_by)
     )
 
-    if current_user.role != "admin":
+    effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
+
+    if effective_user_id is not None and (not PermissionChecker.is_admin(current_user) or PermissionChecker.is_supervisor(current_user) or user_id is not None):
         query = query.join(
             models.UserOfficial,
             models.UserOfficial.funcionario_id == models.Programming.funcionario_id
-        ).filter(models.UserOfficial.user_id == current_user.id)
+        ).filter(models.UserOfficial.user_id == effective_user_id)
     
     if period_id:
         query = query.filter(models.Programming.period_id == period_id)

@@ -8,6 +8,10 @@ import { FuncionariosPagination } from "../components/funcionarios/FuncionariosP
 import { FuncionariosTable } from "../components/funcionarios/FuncionariosTable";
 import { FuncionariosToolbar } from "../components/funcionarios/FuncionariosToolbar";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { useAuth } from "../context/AuthContext";
+import { isSupervisorRole } from "../lib/userRoles";
+import { useSupervisorScope } from "../context/SupervisorScopeContext";
+import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 
 // Helper to normalize RUT input for search
 // Removes dots but keeps hyphen and other characters to allow user typing
@@ -16,8 +20,12 @@ const normalizeRutInput = (value: string) => {
 };
 
 export function Funcionarios() {
+  const { user } = useAuth();
+  const { isSupervisor, isScopeReady } = useSupervisorScope();
   const { officials, addOfficial, removeOfficial, activateOfficial, searchOfficials } = useOfficials();
   const { isReadOnly } = usePeriods();
+  const canManageOfficials = !isSupervisorRole(user?.role);
+  const isReadOnlyView = isReadOnly || !canManageOfficials;
   const [searchQuery, setSearchQuery] = useState("");
   
   // Filter States
@@ -205,13 +213,17 @@ export function Funcionarios() {
     <div className="space-y-6 relative">
       <PageHeader 
         title="Funcionarios" 
-        subtitle={`Administra los funcionarios (${filteredOfficials.length} total)`}
+        subtitle={`${canManageOfficials ? "Administra" : "Consulta"} los funcionarios (${filteredOfficials.length} total)`}
       >
         <ContextualHelpButton slug="funcionarios" />
       </PageHeader>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden w-full transition-colors">
-        <FuncionariosToolbar
+      <SupervisorScopePanel blocking={isSupervisor && !isScopeReady} />
+
+      {isSupervisor && !isScopeReady ? null : (
+        <>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden w-full transition-colors">
+            <FuncionariosToolbar
           searchQuery={searchQuery}
           onSearchQueryChange={(value) => {
             setSearchQuery(normalizeRutInput(value));
@@ -246,63 +258,65 @@ export function Funcionarios() {
              setCurrentPage(1);
            }}
            onAddOfficial={() => setIsAddOfficialModalOpen(true)}
-           canManageOfficials
-           isReadOnly={isReadOnly}
+            canManageOfficials={canManageOfficials}
+            isReadOnly={isReadOnlyView}
          />
 
-        <FuncionariosTable
-          officials={currentOfficials}
-          statusFilter={statusFilter}
-          isReadOnly={isReadOnly}
-          canManageOfficials
-          getContractHoursDisplay={getContractHoursDisplay}
-          onActivate={handleInitiateActivate}
-          onDelete={handleInitiateDelete}
-        />
+            <FuncionariosTable
+              officials={currentOfficials}
+              statusFilter={statusFilter}
+               isReadOnly={isReadOnlyView}
+               canManageOfficials={canManageOfficials}
+              getContractHoursDisplay={getContractHoursDisplay}
+              onActivate={handleInitiateActivate}
+              onDelete={handleInitiateDelete}
+            />
 
-        <FuncionariosPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          itemsPerPage={itemsPerPage}
-          totalItems={filteredOfficials.length}
-          startIndex={startIndex}
-          endIndex={endIndex}
-          onItemsPerPageChange={(value) => {
-            setItemsPerPage(value);
-            setCurrentPage(1);
-          }}
-          onPageChange={handlePageChange}
-        />
-      </div>
-      
-      <FuncionariosModals
-        isActivateModalOpen={isActivateModalOpen}
-        setIsActivateModalOpen={setIsActivateModalOpen}
-        isProcessingActivation={isProcessingActivation}
-        handleConfirmActivate={handleConfirmActivate}
-        isDismissModalOpen={isDismissModalOpen}
-        setIsDismissModalOpen={setIsDismissModalOpen}
-        isProcessingDismiss={isProcessingDismiss}
-        dismissReason={dismissReason}
-        setDismissReason={setDismissReason}
-        setShowConfirmHardDelete={setShowConfirmHardDelete}
-        setDismissError={setDismissError}
-        dismissError={dismissError}
-        showConfirmHardDelete={showConfirmHardDelete}
-        handleConfirmDismiss={handleConfirmDismiss}
-        isAddOfficialModalOpen={isAddOfficialModalOpen}
-        setIsAddOfficialModalOpen={setIsAddOfficialModalOpen}
-        addOfficialSearchQuery={addOfficialSearchQuery}
-        setAddOfficialSearchQuery={setAddOfficialSearchQuery}
-        isSearching={isSearching}
-        searchResults={searchResults}
-        handleAddOfficial={handleAddOfficial}
-        normalizeRutInput={normalizeRutInput}
-        toastOpen={toastOpen}
-        toastMessage={toastMessage}
-        toastType={toastType}
-        setToastOpen={setToastOpen}
-      />
+            <FuncionariosPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              itemsPerPage={itemsPerPage}
+              totalItems={filteredOfficials.length}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              onItemsPerPageChange={(value) => {
+                setItemsPerPage(value);
+                setCurrentPage(1);
+              }}
+              onPageChange={handlePageChange}
+            />
+          </div>
+          
+          <FuncionariosModals
+            isActivateModalOpen={isActivateModalOpen}
+            setIsActivateModalOpen={setIsActivateModalOpen}
+            isProcessingActivation={isProcessingActivation}
+            handleConfirmActivate={handleConfirmActivate}
+            isDismissModalOpen={isDismissModalOpen}
+            setIsDismissModalOpen={setIsDismissModalOpen}
+            isProcessingDismiss={isProcessingDismiss}
+            dismissReason={dismissReason}
+            setDismissReason={setDismissReason}
+            setShowConfirmHardDelete={setShowConfirmHardDelete}
+            setDismissError={setDismissError}
+            dismissError={dismissError}
+            showConfirmHardDelete={showConfirmHardDelete}
+            handleConfirmDismiss={handleConfirmDismiss}
+            isAddOfficialModalOpen={isAddOfficialModalOpen}
+            setIsAddOfficialModalOpen={setIsAddOfficialModalOpen}
+            addOfficialSearchQuery={addOfficialSearchQuery}
+            setAddOfficialSearchQuery={setAddOfficialSearchQuery}
+            isSearching={isSearching}
+            searchResults={searchResults}
+            handleAddOfficial={handleAddOfficial}
+            normalizeRutInput={normalizeRutInput}
+            toastOpen={toastOpen}
+            toastMessage={toastMessage}
+            toastType={toastType}
+            setToastOpen={setToastOpen}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -9,12 +9,20 @@ import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { AddOfficialToGroupModal } from "../components/programacion/AddOfficialToGroupModal";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { getOfficialsForProgrammingGroup, isAutomaticProgrammingGroup } from "../lib/programmingGroups";
+import { useAuth } from "../context/AuthContext";
+import { isSupervisorRole } from "../lib/userRoles";
+import { useSupervisorScope } from "../context/SupervisorScopeContext";
+import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 
 export function ProgramacionGrupo() {
+  const { user } = useAuth();
+  const { isSupervisor, isScopeReady } = useSupervisorScope();
   const { groupId } = useParams();
   const navigate = useNavigate();
   const { officials: myOfficials, groups, assignToGroup } = useOfficials();
   const { isReadOnly } = usePeriods();
+  const canManageProgramming = !isSupervisorRole(user?.role);
+  const isReadOnlyView = isReadOnly || !canManageProgramming;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOfficial, setSelectedOfficial] = useState<Funcionario | null>(null);
   const [isAddOfficialModalOpen, setIsAddOfficialModalOpen] = useState(false);
@@ -35,6 +43,14 @@ export function ProgramacionGrupo() {
 
   if (isLoadingGroupData) {
     return <div className="p-8 text-center">Cargando grupo...</div>;
+  }
+
+  if (isSupervisor && !isScopeReady) {
+    return (
+      <div className="space-y-6 max-w-6xl mx-auto">
+        <SupervisorScopePanel blocking />
+      </div>
+    );
   }
 
   if (!group) {
@@ -90,8 +106,8 @@ export function ProgramacionGrupo() {
           <ProgrammingGroupHeader
             groupName={group.name}
             officialsCount={groupOfficials.length}
-            isReadOnly={isReadOnly}
-            canAssignOfficials={!isAutomaticGroup}
+             isReadOnly={isReadOnlyView}
+             canAssignOfficials={!isAutomaticGroup && canManageProgramming}
             onBack={() => navigate("/programacion")}
             onAddOfficial={() => setIsAddOfficialModalOpen(true)}
           />
@@ -114,8 +130,8 @@ export function ProgramacionGrupo() {
 
       <ProgrammingGroupOfficialsList
         officials={filteredOfficials}
-        isReadOnly={isReadOnly}
-        canAssignOfficials={!isAutomaticGroup}
+         isReadOnly={isReadOnlyView}
+         canAssignOfficials={!isAutomaticGroup && canManageProgramming}
         showInactiveReason={isAutomaticGroup}
         formatContractHours={formatContractHours}
         onSelectOfficial={setSelectedOfficial}
@@ -130,7 +146,7 @@ export function ProgramacionGrupo() {
         />
       )}
 
-      {!isAutomaticGroup && (
+      {!isAutomaticGroup && canManageProgramming && (
         <AddOfficialToGroupModal
           isOpen={isAddOfficialModalOpen}
           onClose={() => setIsAddOfficialModalOpen(false)}

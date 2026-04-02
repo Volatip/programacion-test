@@ -4,6 +4,7 @@ import { usePeriods } from './PeriodsContext';
 import { fetchWithAuth, buildApiUrl } from '../lib/api';
 import { OfficialsContext, Funcionario, Group } from './OfficialsContextDefs';
 import { buildProgrammingGroups } from '../lib/programmingGroups';
+import { useSupervisorScope } from './SupervisorScopeContext';
 
 interface RawFuncionario {
   id: number;
@@ -45,6 +46,7 @@ interface RawGroup {
 export function OfficialsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const { selectedPeriod } = usePeriods();
+  const { isSupervisor, isScopeReady, selectedUserId: scopedUserId } = useSupervisorScope();
   const [officials, setOfficials] = useState<Funcionario[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
 
@@ -55,7 +57,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setOfficials([]);
     setGroups([]);
-  }, [user?.id, selectedPeriod?.id]);
+  }, [user?.id, selectedPeriod?.id, scopedUserId]);
 
   const mapFuncionario = (item: RawFuncionario): Funcionario => ({
     id: item.id,
@@ -94,12 +96,20 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchOfficials = useCallback(async () => {
-    if (!user || !selectedPeriod) {
+    if (!user || !selectedPeriod || (isSupervisor && !isScopeReady)) {
       setOfficials([]);
       return;
     }
     try {
-      const response = await fetchWithAuth(`/funcionarios?active_only=false&period_id=${selectedPeriod.id}`);
+      const queryParams = new URLSearchParams({
+        active_only: "false",
+        period_id: selectedPeriod.id.toString(),
+      });
+      if (isSupervisor && scopedUserId) {
+        queryParams.append("user_id", scopedUserId.toString());
+      }
+
+      const response = await fetchWithAuth(`/funcionarios?${queryParams.toString()}`);
       if (response.ok) {
         const data: RawFuncionario[] = await response.json();
         const mappedOfficials = data.map(mapFuncionario);
@@ -111,13 +121,17 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       setOfficials([]);
       console.error("Error fetching officials:", error);
     }
-  }, [user, selectedPeriod]);
+  }, [isScopeReady, isSupervisor, scopedUserId, user, selectedPeriod]);
 
   useEffect(() => {
     fetchOfficials();
   }, [fetchOfficials]); // Refetch when user or period changes
 
   const searchOfficials = async (query: string, global: boolean = false): Promise<Funcionario[]> => {
+    if (isSupervisor && !isScopeReady) {
+      return [];
+    }
+
     try {
       let url = `/funcionarios/search?q=${query}`;
       if (global) {
@@ -128,6 +142,10 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       
       if (selectedPeriod) {
         url += `&period_id=${selectedPeriod.id}`;
+      }
+
+      if (isSupervisor && scopedUserId) {
+        url += `&user_id=${scopedUserId}`;
       }
       
       const response = await fetchWithAuth(url);
@@ -143,12 +161,19 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
   };
 
   const fetchGroups = useCallback(async () => {
-    if (!user || !selectedPeriod) {
+    if (!user || !selectedPeriod || (isSupervisor && !isScopeReady)) {
       setGroups([]);
       return;
     }
     try {
-      const response = await fetchWithAuth(`/groups?period_id=${selectedPeriod.id}`);
+      const queryParams = new URLSearchParams({
+        period_id: selectedPeriod.id.toString(),
+      });
+      if (isSupervisor && scopedUserId) {
+        queryParams.append("user_id", scopedUserId.toString());
+      }
+
+      const response = await fetchWithAuth(`/groups?${queryParams.toString()}`);
       if (response.ok) {
         const data: RawGroup[] = await response.json();
         setGroups(data.map((g) => ({
@@ -163,7 +188,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       setGroups([]);
       console.error("Error fetching groups:", error);
     }
-  }, [user, selectedPeriod]);
+  }, [isScopeReady, isSupervisor, scopedUserId, user, selectedPeriod]);
 
   useEffect(() => {
     fetchGroups();

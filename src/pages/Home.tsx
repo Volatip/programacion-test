@@ -10,6 +10,8 @@ import { useTheme } from "../hooks/useTheme";
 import { HoursChart } from "../components/dashboard/HoursChart";
 import { Users, Activity, FileText, AlertCircle, RefreshCw } from "lucide-react";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { useSupervisorScope } from "../context/SupervisorScopeContext";
+import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 
 interface GroupChartItem {
   name: string;
@@ -23,10 +25,12 @@ const Home = () => {
   const { user } = useAuth();
   const { selectedPeriod } = usePeriods();
   const { theme } = useTheme();
+  const { isSupervisor, isScopeReady, selectedUser } = useSupervisorScope();
   const [hoveredGroup, setHoveredGroup] = useState<GroupChartItem | null>(null);
   const { stats, loading, error, fetchStats } = useDashboardStats({
     periodId: selectedPeriod?.id,
-    enabled: Boolean(user),
+    userId: isSupervisor ? selectedUser?.id : undefined,
+    enabled: Boolean(user) && (!isSupervisor || isScopeReady),
   });
   const summary = stats?.summary;
   const operationalStats = [
@@ -115,50 +119,56 @@ const Home = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Resumen de Programación"
-        subtitle={`${stats?.summary.period_name || 'Período Actual'}`}
+        title={isSupervisor ? "Supervisión por usuario" : "Resumen de Programación"}
+        subtitle={isSupervisor && selectedUser ? `${stats?.summary.period_name || 'Período Actual'} · ${selectedUser.name}` : `${stats?.summary.period_name || 'Período Actual'}`}
       >
         <ContextualHelpButton slug="home" />
       </PageHeader>
 
-      <div className="space-y-8">
-        <DashboardStatsSection
-          title="Estado Operativo"
-          accentClassName="bg-indigo-500 dark:bg-indigo-400"
-          items={operationalStats}
-        />
+      <SupervisorScopePanel blocking={isSupervisor && !isScopeReady} />
 
-        <DashboardStatsSection
-          title="Inactividad y Movimientos"
-          accentClassName="bg-rose-500 dark:bg-rose-400"
-          items={inactiveStats}
-        />
-      </div>
+      {isSupervisor && !isScopeReady ? null : (
+        <>
+          <div className="space-y-8">
+            <DashboardStatsSection
+              title="Estado Operativo"
+              accentClassName="bg-indigo-500 dark:bg-indigo-400"
+              items={operationalStats}
+            />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 h-96">
-          <HoursChart
-            title="Horas Contrato por Período"
-            data={stats?.chart_data || []}
-            color={theme === 'dark' ? '#818cf8' : '#4F46E5'}
-            shiftColor={theme === 'dark' ? '#2dd4bf' : '#14b8a6'}
-          />
-        </div>
+            <DashboardStatsSection
+              title="Inactividad y Movimientos"
+              accentClassName="bg-rose-500 dark:bg-rose-400"
+              items={inactiveStats}
+            />
+          </div>
 
-        <PeriodDetailsPanel
-          selectedPeriod={selectedPeriod}
-          summary={stats?.summary || { period_name: "", shift_hours: 0, shift_officials_count: 0 }}
-          chartData={stats?.chart_data || []}
-        />
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 h-96">
+              <HoursChart
+                title="Horas Contrato por Período"
+                data={stats?.chart_data || []}
+                color={theme === 'dark' ? '#818cf8' : '#4F46E5'}
+                shiftColor={theme === 'dark' ? '#2dd4bf' : '#14b8a6'}
+              />
+            </div>
 
-      {stats?.group_chart_data && stats.group_chart_data.length > 0 && (
-        <GroupHoursChart
-          data={stats.group_chart_data}
-          hoveredGroup={hoveredGroup}
-          onHoverGroup={setHoveredGroup}
-          theme={theme}
-        />
+            <PeriodDetailsPanel
+              selectedPeriod={selectedPeriod}
+              summary={stats?.summary || { period_name: "", shift_hours: 0, shift_officials_count: 0 }}
+              chartData={stats?.chart_data || []}
+            />
+          </div>
+
+          {stats?.group_chart_data && stats.group_chart_data.length > 0 && (
+            <GroupHoursChart
+              data={stats.group_chart_data}
+              hoveredGroup={hoveredGroup}
+              onHoverGroup={setHoveredGroup}
+              theme={theme}
+            />
+          )}
+        </>
       )}
     </div>
   );

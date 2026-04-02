@@ -144,7 +144,11 @@ export function ProgrammingGroupsPanel({
           <div className="col-span-full py-12 text-center text-gray-400 dark:text-gray-500 bg-gray-50/50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
             <BarChart className="w-12 h-12 mx-auto mb-3 opacity-20" />
             <p>No tienes grupos creados</p>
-            <button onClick={onCreateGroup} className="text-green-600 dark:text-green-400 font-medium hover:underline mt-2">
+            <button
+              onClick={onCreateGroup}
+              disabled={isReadOnly}
+              className="text-green-600 dark:text-green-400 font-medium hover:underline mt-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+            >
               Crear mi primer grupo
             </button>
           </div>

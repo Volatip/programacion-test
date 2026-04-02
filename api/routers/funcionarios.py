@@ -23,6 +23,29 @@ import json
 logger = logging.getLogger(__name__)
 
 
+def get_period_group_assignments(db: Session, period_id: Optional[int], user_id: Optional[int] = None) -> list[tuple[str, Optional[int]]]:
+    query = db.query(models.Funcionario.rut, models.UserOfficial.group_id).join(
+        models.UserOfficial,
+        models.UserOfficial.funcionario_id == models.Funcionario.id,
+    ).filter(models.Funcionario.rut.isnot(None))
+
+    if period_id is not None:
+        query = query.filter(models.Funcionario.period_id == period_id)
+
+    if user_id is not None:
+        query = query.filter(models.UserOfficial.user_id == user_id)
+
+    return query.all()
+
+
+def build_rut_to_group(assignments: list[tuple[str, Optional[int]]]) -> dict[str, Optional[int]]:
+    rut_to_group: dict[str, Optional[int]] = {}
+    for rut, group_id in assignments:
+        if rut and rut not in rut_to_group:
+            rut_to_group[rut] = group_id
+    return rut_to_group
+
+
 def get_user_scoped_ruts(
     db: Session,
     user_id: int,
@@ -586,7 +609,7 @@ def read_funcionarios(
         default=DEFAULT_FUNCIONARIOS_LIMIT,
         max_value=MAX_FUNCIONARIOS_LIMIT,
     )
-    effective_user_id = current_user.id if user_id is None else PermissionChecker.resolve_user_scope(current_user, user_id)
+    effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
 
     # Determine base query and filtering based on user role
     user = None
@@ -618,14 +641,7 @@ def read_funcionarios(
         # show all their hours, not just the specific contract row linked in UserOfficial.
         
         # 1. Get linked RUTs and their Group IDs
-        linked_officials = db.query(models.Funcionario.rut, models.UserOfficial.group_id)\
-            .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)\
-            .filter(models.UserOfficial.user_id == effective_user_id)
-
-        if period_id is not None:
-            linked_officials = linked_officials.filter(models.Funcionario.period_id == period_id)
-
-        linked_officials = linked_officials.all()
+        linked_officials = get_period_group_assignments(db, period_id, effective_user_id)
             
         linked_ruts = [r[0] for r in linked_officials]
         # Map RUT to Group ID (Note: If a person is in multiple groups, this simplistic map takes the last one.
@@ -690,7 +706,31 @@ def read_funcionarios(
         
         return consolidated[start:end]
     
-    return []
+    query = db.query(models.Funcionario)
+
+    if active_only:
+        query = query.filter(models.Funcionario.is_active_roster == True)
+
+    if status and status != "todos":
+        query = query.filter(models.Funcionario.status == status)
+
+    if period_id:
+        query = query.filter(models.Funcionario.period_id == period_id)
+
+    if user_role == 'medical_coordinator':
+        query = query.filter(models.Funcionario.title == 'Médico(a) Cirujano(a)')
+    elif user_role == 'non_medical_coordinator':
+        query = query.filter(models.Funcionario.title != 'Médico(a) Cirujano(a)')
+
+    all_contracts = query.order_by(models.Funcionario.rut).all()
+    rut_to_group = build_rut_to_group(get_period_group_assignments(db, period_id))
+    contracts_with_groups = [(contract, rut_to_group.get(contract.rut)) for contract in all_contracts]
+    inactive_reasons = get_latest_inactive_reasons_by_rut(db, period_id, [contract.rut for contract in all_contracts if contract.rut])
+    consolidated = consolidate_contracts(contracts_with_groups, programmed_details, inactive_reasons)
+
+    start = normalized_skip
+    end = normalized_skip + normalized_limit
+    return consolidated[start:end]
 
 @router.get("/search", response_model=List[schemas.FuncionarioConsolidated])
 def search_funcionarios(
@@ -707,7 +747,7 @@ def search_funcionarios(
         default=DEFAULT_SEARCH_RESULTS_LIMIT,
         max_value=MAX_SEARCH_RESULTS_LIMIT,
     )
-    effective_user_id = current_user.id if user_id is None else PermissionChecker.resolve_user_scope(current_user, user_id)
+    effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
     search_term = f"%{q}%"
 
     # RUT Handling Logic
@@ -786,17 +826,10 @@ def search_funcionarios(
     # Case 1: Search within Linked Officials (Local Scope)
     if effective_user_id is not None and search_mode == 'local':
         # 1. Get linked RUTs and their Group IDs
-        linked_officials = db.query(models.Funcionario.rut, models.UserOfficial.group_id)\
-            .join(models.UserOfficial, models.UserOfficial.funcionario_id == models.Funcionario.id)\
-            .filter(models.UserOfficial.user_id == effective_user_id)
-
-        if period_id is not None:
-            linked_officials = linked_officials.filter(models.Funcionario.period_id == period_id)
-
-        linked_officials = linked_officials.all()
+        linked_officials = get_period_group_assignments(db, period_id, effective_user_id)
 
         linked_ruts = get_user_scoped_ruts(db, effective_user_id, period_id=period_id)
-        rut_to_group = {r[0]: r[1] for r in linked_officials}
+        rut_to_group = build_rut_to_group(linked_officials)
         
         if not linked_ruts:
              return []
@@ -862,6 +895,7 @@ def bind_funcionario_to_user(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     payload = payload or {}
+    PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id"))
     PermissionChecker.check_can_bind_funcionario(current_user, funcionario_id, db)
         
@@ -901,6 +935,7 @@ def unbind_funcionario_from_user(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
+    PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
     bind = db.query(models.UserOfficial).filter(
         models.UserOfficial.user_id == user_id,
@@ -921,6 +956,7 @@ def assign_funcionario_group(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
+    PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id"))
     group_id = payload.get("group_id") # Can be None
     
@@ -961,6 +997,7 @@ def dismiss_funcionario(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     reason = payload.get("reason")
+    PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id")) # Who performed the action
     
     if not reason:
@@ -1070,6 +1107,7 @@ def activate_funcionario(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     payload = payload or {}
+    PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id")) # Who performed the action
     
     funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()

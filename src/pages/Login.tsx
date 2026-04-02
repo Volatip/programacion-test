@@ -5,6 +5,8 @@ import { Lock, Eye, EyeOff, Github, Sun, Moon } from 'lucide-react';
 import { formatRut, validateRut } from '../lib/utils';
 import { Modal } from '../components/ui/Modal';
 import { useTheme } from '../hooks/useTheme';
+import { isSupervisorRole } from '../lib/userRoles';
+import { getStoredSession } from '../lib/api';
 
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.png`;
 const BACKGROUND_URL = `${import.meta.env.BASE_URL}fondo.jpg`;
@@ -39,7 +41,8 @@ export function Login() {
 
     try {
       await login(rut, password);
-      navigate('/');
+      const storedUser = JSON.parse(getStoredSession().user || 'null') as { role?: string } | null;
+      navigate(isSupervisorRole(storedUser?.role) ? '/funcionarios' : '/');
     } catch (err) {
       setError('Credenciales inválidas. Por favor intente nuevamente.');
       console.error(err);

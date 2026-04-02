@@ -7,11 +7,13 @@ import pytest
 from fastapi import HTTPException
 from starlette.datastructures import Headers, UploadFile
 
-from api import auth, main, models, runtime_config
+from api import auth, main, models, runtime_config, schemas
 from api.routers import config as config_router
 from api.routers import funcionarios as funcionarios_router
+from api.routers import groups as groups_router
 from api.routers import programming as programming_router
 from api.routers import stats as stats_router
+from api.routers import users as users_router
 from api.permissions import PermissionChecker
 from api.routers.periods import delete_related_period_data
 from api.routers.programming import validate_programming_version
@@ -206,6 +208,13 @@ def test_resolve_user_scope_rejects_cross_user_requests_for_non_admin() -> None:
     assert exc_info.value.detail == "No tiene permiso para operar sobre otro usuario."
 
 
+def test_resolve_user_scope_defaults_supervisor_to_global_scope_and_allows_explicit_override() -> None:
+    supervisor = make_user(user_id=9, role="supervisor")
+
+    assert PermissionChecker.resolve_user_scope(supervisor) is None
+    assert PermissionChecker.resolve_user_scope(supervisor, 44) == 44
+
+
 def test_read_funcionarios_normalizes_bounds_and_caps_results(db_session) -> None:
     user = make_user(user_id=40, role="user")
     period = make_period(name="2026-03", month=3, status="ACTIVO", is_active=True)
@@ -246,6 +255,45 @@ def test_read_funcionarios_normalizes_bounds_and_caps_results(db_session) -> Non
     assert payload[-1]["rut"] == str(10000000 + funcionarios_router.MAX_FUNCIONARIOS_LIMIT - 1)
 
 
+def test_read_funcionarios_allows_supervisor_global_read_scope(db_session) -> None:
+    supervisor = make_user(user_id=401, role="supervisor")
+    owner = make_user(user_id=402, role="user")
+    period = make_period(name="2026-07", month=7, status="ACTIVO", is_active=True)
+    db_session.add_all([supervisor, owner, period])
+    db_session.flush()
+
+    funcionario_a = models.Funcionario(
+        name="Funcionario Uno",
+        title="Enfermero",
+        rut="71000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    funcionario_b = models.Funcionario(
+        name="Funcionario Dos",
+        title="Médico(a) Cirujano(a)",
+        rut="71000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([funcionario_a, funcionario_b])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=owner.id, funcionario_id=funcionario_a.id))
+    db_session.commit()
+
+    payload = funcionarios_router.read_funcionarios(
+        period_id=period.id,
+        db=db_session,
+        current_user=supervisor,
+    )
+
+    assert {item["rut"] for item in payload} == {"71000001", "71000002"}
+
+
 def test_search_funcionarios_caps_results_without_breaking_default_flow(db_session) -> None:
     user = make_user(user_id=41, role="user")
     period = make_period(name="2026-04", month=4, status="ACTIVO", is_active=True)
@@ -280,6 +328,195 @@ def test_search_funcionarios_caps_results_without_breaking_default_flow(db_sessi
     )
 
     assert len(payload) == funcionarios_router.MAX_SEARCH_RESULTS_LIMIT
+
+
+def test_read_groups_allows_supervisor_global_read_scope(db_session) -> None:
+    supervisor = make_user(user_id=403, role="supervisor")
+    owner = make_user(user_id=404, role="user")
+    period = make_period(name="2026-08", month=8, status="ACTIVO", is_active=True)
+    db_session.add_all([supervisor, owner, period])
+    db_session.flush()
+
+    group = models.Group(name="Equipo A", user_id=owner.id, period_id=period.id)
+    funcionario = models.Funcionario(
+        name="Funcionario Grupo",
+        title="Enfermero",
+        rut="72000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([group, funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=owner.id, funcionario_id=funcionario.id, group_id=group.id))
+    db_session.commit()
+
+    payload = groups_router.read_groups(period_id=period.id, db=db_session, current_user=supervisor)
+
+    assert len(payload) == 1
+    assert payload[0]["name"] == "Equipo A"
+    assert payload[0]["count"] == 1
+
+
+def test_read_programmings_allows_supervisor_global_read_scope(db_session) -> None:
+    supervisor = make_user(user_id=405, role="supervisor")
+    owner = make_user(user_id=406, role="user")
+    period = make_period(name="2026-09", month=9, status="ACTIVO", is_active=True)
+    db_session.add_all([supervisor, owner, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="Funcionario Programado",
+        title="Enfermero",
+        rut="73000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=owner.id, funcionario_id=funcionario.id))
+    db_session.add(models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        assigned_status="Activo",
+        selected_process="Consulta",
+        created_by_id=owner.id,
+        updated_by_id=owner.id,
+    ))
+    db_session.commit()
+
+    payload = programming_router.read_programmings(period_id=period.id, funcionario_ids=None, db=db_session, current_user=supervisor)
+
+    assert len(payload) == 1
+    assert payload[0].funcionario_id == funcionario.id
+
+
+def test_read_programmings_filters_supervisor_by_explicit_user_scope(db_session) -> None:
+    supervisor = make_user(user_id=408, role="supervisor")
+    owner_a = make_user(user_id=409, role="user")
+    owner_b = make_user(user_id=410, role="user")
+    period = make_period(name="2026-11", month=11, status="ACTIVO", is_active=True)
+    db_session.add_all([supervisor, owner_a, owner_b, period])
+    db_session.flush()
+
+    funcionario_a = models.Funcionario(
+        name="Funcionario A",
+        title="Enfermero",
+        rut="73500001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    funcionario_b = models.Funcionario(
+        name="Funcionario B",
+        title="Enfermero",
+        rut="73500002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([funcionario_a, funcionario_b])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user_id=owner_a.id, funcionario_id=funcionario_a.id),
+        models.UserOfficial(user_id=owner_b.id, funcionario_id=funcionario_b.id),
+        models.Programming(
+            funcionario_id=funcionario_a.id,
+            period_id=period.id,
+            assigned_status="Activo",
+            selected_process="Consulta",
+            created_by_id=owner_a.id,
+            updated_by_id=owner_a.id,
+        ),
+        models.Programming(
+            funcionario_id=funcionario_b.id,
+            period_id=period.id,
+            assigned_status="Activo",
+            selected_process="Procedimiento",
+            created_by_id=owner_b.id,
+            updated_by_id=owner_b.id,
+        ),
+    ])
+    db_session.commit()
+
+    payload = programming_router.read_programmings(
+        period_id=period.id,
+        funcionario_ids=None,
+        user_id=owner_a.id,
+        db=db_session,
+        current_user=supervisor,
+    )
+
+    assert len(payload) == 1
+    assert payload[0].funcionario_id == funcionario_a.id
+
+
+def test_supervisor_can_list_supervised_user_options(db_session) -> None:
+    supervisor = make_user(user_id=411, role="supervisor")
+    regular_user = make_user(user_id=412, role="user")
+    coordinator = make_user(user_id=413, role="medical_coordinator")
+    admin = make_user(user_id=414, role="admin")
+    inactive_user = make_user(user_id=415, role="user")
+    inactive_user.status = "inactivo"
+
+    db_session.add_all([supervisor, regular_user, coordinator, admin, inactive_user])
+    db_session.commit()
+
+    payload = users_router.read_supervised_user_options(db=db_session, current_user=supervisor)
+
+    assert {user.id for user in payload} == {admin.id, regular_user.id, coordinator.id}
+
+
+def test_supervisor_cannot_write_funcionarios_or_programming(db_session) -> None:
+    supervisor = make_user(user_id=407, role="supervisor")
+    period = make_period(name="2026-10", month=10, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Funcionario Solo Lectura",
+        title="Enfermero",
+        rut="74000001",
+        dv="K",
+        period_id=1,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([supervisor, period, funcionario])
+    db_session.flush()
+    funcionario.period_id = period.id
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as bind_exc:
+        funcionarios_router.bind_funcionario_to_user(
+            funcionario_id=funcionario.id,
+            payload={},
+            db=db_session,
+            current_user=supervisor,
+        )
+
+    assert bind_exc.value.status_code == 403
+    assert bind_exc.value.detail == "El rol supervisor solo puede acceder en modo lectura."
+
+    with pytest.raises(HTTPException) as programming_exc:
+        programming_router.create_programming(
+            programming=schemas.ProgrammingCreate(
+                funcionario_id=funcionario.id,
+                period_id=period.id,
+                assigned_status="Activo",
+                prais=False,
+                selected_process="Consulta",
+                items=[],
+            ),
+            db=db_session,
+            current_user=supervisor,
+        )
+
+    assert programming_exc.value.status_code == 403
+    assert programming_exc.value.detail == "El rol supervisor solo puede acceder en modo lectura."
 
 
 def test_search_funcionarios_global_scope_excludes_unassigned_officials_for_non_admin(db_session) -> None:

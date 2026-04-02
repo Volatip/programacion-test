@@ -5,11 +5,28 @@ from . import models
 
 class PermissionChecker:
     @staticmethod
+    def is_admin(user: models.User) -> bool:
+        return getattr(user, "role", None) == "admin"
+
+    @staticmethod
+    def is_supervisor(user: models.User) -> bool:
+        return getattr(user, "role", None) == "supervisor"
+
+    @staticmethod
     def require_admin(user: models.User, detail: str = "Acceso denegado. Se requieren privilegios de administrador."):
-        if user.role != "admin":
+        if not PermissionChecker.is_admin(user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=detail
+            )
+        return True
+
+    @staticmethod
+    def require_read_only_access(user: models.User, detail: str = "El rol supervisor solo puede acceder en modo lectura."):
+        if PermissionChecker.is_supervisor(user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=detail,
             )
         return True
 
@@ -19,8 +36,11 @@ class PermissionChecker:
         By default every user, including admins, operates within their own scope.
         Admins may optionally scope requests to another user by sending an explicit user_id.
         """
-        if user.role == "admin":
+        if PermissionChecker.is_admin(user):
             return requested_user_id if requested_user_id is not None else user.id
+
+        if PermissionChecker.is_supervisor(user):
+            return requested_user_id
 
         if requested_user_id is not None and requested_user_id != user.id:
             raise HTTPException(
@@ -42,7 +62,7 @@ class PermissionChecker:
                 detail="Funcionario not found"
             )
 
-        if user.role == "admin":
+        if PermissionChecker.is_admin(user) or PermissionChecker.is_supervisor(user):
             return True
 
         assignment = db.query(models.UserOfficial).filter(
@@ -76,6 +96,7 @@ class PermissionChecker:
         """
         Check if the user has permission to edit the programming of a specific official.
         """
+        PermissionChecker.require_read_only_access(user)
         try:
             return PermissionChecker.check_can_access_funcionario(user, funcionario_id, db)
         except HTTPException:
@@ -94,6 +115,8 @@ class PermissionChecker:
         - hidden officials that previously belonged to their scope
         - other contracts that share the same RUT with an assigned official
         """
+        PermissionChecker.require_read_only_access(user)
+
         funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
         if not funcionario:
             raise HTTPException(
@@ -101,7 +124,7 @@ class PermissionChecker:
                 detail="Funcionario not found"
             )
 
-        if user.role == "admin":
+        if PermissionChecker.is_admin(user):
             return funcionario
 
         direct_assignment = db.query(models.UserOfficial).filter(
@@ -142,7 +165,9 @@ class PermissionChecker:
         """
         Check if the user owns the group or is admin.
         """
-        if user.role == "admin":
+        PermissionChecker.require_read_only_access(user)
+
+        if PermissionChecker.is_admin(user):
             return True
 
         group = db.query(models.Group).filter(models.Group.id == group_id).first()
@@ -165,7 +190,7 @@ class PermissionChecker:
         """
         Only admins can manage periods (create, close, delete).
         """
-        if user.role != "admin":
+        if not PermissionChecker.is_admin(user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Solo los administradores pueden gestionar periodos."

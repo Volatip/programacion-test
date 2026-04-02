@@ -94,6 +94,7 @@ export function UserFormModal({
               <option value="admin">Administrador</option>
               <option value="medical_coordinator">Coordinador Médico</option>
               <option value="non_medical_coordinator">Coordinador No Médico</option>
+              <option value="supervisor">Supervisor</option>
               <option value="user">Usuario</option>
             </select>
           </div>

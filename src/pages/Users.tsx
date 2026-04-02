@@ -4,7 +4,7 @@ import { UsersFloatingMenu } from "../components/users/UsersFloatingMenu";
 import { UsersTable } from "../components/users/UsersTable";
 import { UsersToolbar } from "../components/users/UsersToolbar";
 import { PageHeader } from "../components/ui/PageHeader";
-import { formatRut } from "../lib/utils";
+import { formatRut, validateRut } from "../lib/utils";
 import { buildApiUrl, fetchWithAuth } from "../lib/api";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 
@@ -51,6 +51,7 @@ export function Users() {
     admin: "Administrador",
     medical_coordinator: "Coordinador Médico",
     non_medical_coordinator: "Coordinador No Médico",
+    supervisor: "Supervisor",
     user: "Usuario",
   };
 
@@ -58,6 +59,7 @@ export function Users() {
     admin: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",
     medical_coordinator: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
     non_medical_coordinator: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300",
+    supervisor: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
     user: "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300",
   };
 
@@ -150,12 +152,18 @@ export function Users() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const normalizedRut = formatRut(formData.rut);
+    if (!validateRut(normalizedRut)) {
+      alert("Error: RUT inválido. Verifique el formato y dígito verificador.");
+      return;
+    }
+
     const url = isEditMode
       ? buildApiUrl(`/users/${selectedUserId}`)
       : buildApiUrl("/users");
     const method = isEditMode ? "PUT" : "POST";
 
-    const bodyData = { ...formData };
+    const bodyData = { ...formData, rut: normalizedRut };
     if (isEditMode && !bodyData.password) {
       delete bodyData.password;
     }

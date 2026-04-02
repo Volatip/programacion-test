@@ -28,6 +28,7 @@ import {
   getProgrammingVisualState,
   parseProgrammingContractHours,
 } from "../../lib/programmingModalUtils";
+import { isSupervisorRole } from "../../lib/userRoles";
 
 
 type ActivityEntry = ProgrammingActivityEntry;
@@ -42,6 +43,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
   const { officials: myOfficials, groups, assignToGroup, refreshOfficials, activateOfficial, removeOfficial, updateOfficialLocally } = useOfficials();
   const { selectedPeriod, isReadOnly } = usePeriods();
   const { user } = useAuth();
+  const isReadOnlyView = isReadOnly || isSupervisorRole(user?.role);
   const { getCachedProgramming, fetchProgramming, updateCache, removeCachedProgramming } = useProgrammingCache();
   
   // Determine if the official is a Medical professional
@@ -609,13 +611,13 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
             setPrais={setPrais}
             clearError={clearError}
             formErrors={formErrors}
-            isReadOnly={isReadOnly}
+            isReadOnly={isReadOnlyView}
             isExempt={isExempt}
           />
 
           <ProgrammingModalFormCard
             isLoadingProgramming={isLoadingProgramming}
-            isReadOnly={isReadOnly}
+            isReadOnly={isReadOnlyView}
             showCopyAndProcess={showCopyAndProcess}
             copySearchQuery={copySearchQuery}
             onCopySearchQueryChange={setCopySearchQuery}

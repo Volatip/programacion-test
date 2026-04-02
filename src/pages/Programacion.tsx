@@ -8,10 +8,18 @@ import { ProgrammingSearchBar } from "../components/programacion/ProgrammingSear
 import { ProgrammingStatusSummary } from "../components/programacion/ProgrammingStatusSummary";
 import { PageHeader } from "../components/ui/PageHeader";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { useAuth } from "../context/AuthContext";
+import { isSupervisorRole } from "../lib/userRoles";
+import { useSupervisorScope } from "../context/SupervisorScopeContext";
+import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 
 export function Programacion() {
+  const { user } = useAuth();
+  const { isSupervisor, isScopeReady } = useSupervisorScope();
   const { officials: myOfficials, groups, addGroup, updateGroup, removeGroup } = useOfficials();
   const { isReadOnly } = usePeriods();
+  const canManageProgramming = !isSupervisorRole(user?.role);
+  const isReadOnlyView = isReadOnly || !canManageProgramming;
   const [searchQuery, setSearchQuery] = useState("");
 
   const { scheduledFuncionarios, unscheduledFuncionarios } = useProgrammingClassification();
@@ -112,44 +120,50 @@ export function Programacion() {
          />
       </PageHeader>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <ProgrammingGroupsPanel
-            groups={groups}
-            isReadOnly={isReadOnly}
-            openMenuGroupId={openMenuGroupId}
-            menuRef={menuRef}
-            onCreateGroup={handleCreateGroup}
-            onToggleMenu={toggleMenu}
-            onEditGroup={handleEditGroup}
-            onDeleteGroup={handleDeleteGroup}
-            canAssignOfficials
-            onAddOfficialToGroup={setAddingToGroup}
+      <SupervisorScopePanel blocking={isSupervisor && !isScopeReady} />
+
+      {isSupervisor && !isScopeReady ? null : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <ProgrammingGroupsPanel
+                groups={groups}
+                isReadOnly={isReadOnlyView}
+                openMenuGroupId={openMenuGroupId}
+                menuRef={menuRef}
+                onCreateGroup={handleCreateGroup}
+                onToggleMenu={toggleMenu}
+                onEditGroup={handleEditGroup}
+                onDeleteGroup={handleDeleteGroup}
+                canAssignOfficials={canManageProgramming}
+                onAddOfficialToGroup={setAddingToGroup}
+              />
+            </div>
+
+            <ProgrammingStatusSummary
+              scheduledFuncionarios={scheduledFuncionarios}
+              unscheduledFuncionarios={unscheduledFuncionarios}
+            />
+          </div>
+
+          <ProgrammingGroupModals
+            isCreateGroupModalOpen={isCreateGroupModalOpen}
+            isEditGroupModalOpen={isEditGroupModalOpen}
+            isDeleteGroupModalOpen={isDeleteGroupModalOpen}
+            newGroupName={newGroupName}
+            setNewGroupName={setNewGroupName}
+            groupToDelete={groupToDelete}
+            addingToGroup={addingToGroup}
+            setIsCreateGroupModalOpen={setIsCreateGroupModalOpen}
+            setIsEditGroupModalOpen={setIsEditGroupModalOpen}
+            setIsDeleteGroupModalOpen={setIsDeleteGroupModalOpen}
+            setAddingToGroup={setAddingToGroup}
+            confirmCreateGroup={confirmCreateGroup}
+            confirmEditGroup={confirmEditGroup}
+            confirmDeleteGroup={confirmDeleteGroup}
           />
-        </div>
-
-        <ProgrammingStatusSummary
-          scheduledFuncionarios={scheduledFuncionarios}
-          unscheduledFuncionarios={unscheduledFuncionarios}
-        />
-      </div>
-
-      <ProgrammingGroupModals
-        isCreateGroupModalOpen={isCreateGroupModalOpen}
-        isEditGroupModalOpen={isEditGroupModalOpen}
-        isDeleteGroupModalOpen={isDeleteGroupModalOpen}
-        newGroupName={newGroupName}
-        setNewGroupName={setNewGroupName}
-        groupToDelete={groupToDelete}
-        addingToGroup={addingToGroup}
-        setIsCreateGroupModalOpen={setIsCreateGroupModalOpen}
-        setIsEditGroupModalOpen={setIsEditGroupModalOpen}
-        setIsDeleteGroupModalOpen={setIsDeleteGroupModalOpen}
-        setAddingToGroup={setAddingToGroup}
-        confirmCreateGroup={confirmCreateGroup}
-        confirmEditGroup={confirmEditGroup}
-        confirmDeleteGroup={confirmDeleteGroup}
-      />
+        </>
+      )}
     </div>
   );
 }

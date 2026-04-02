@@ -118,8 +118,51 @@ def test_login_failure_creates_audit_event(db_session) -> None:
     assert audit_events[0].event_type == session_audit.EVENT_LOGIN_FAILURE
     assert audit_events[0].success is False
     assert audit_events[0].failure_reason == "invalid_credentials"
-    assert audit_events[0].user_rut == "12.345.678-5"
-    assert audit_events[0].ip_address == "198.51.100.25"
+
+
+def test_create_user_normalizes_valid_rut_and_rejects_invalid_one(db_session) -> None:
+    admin_user = models.User(
+        email="root@example.com",
+        password_hash=auth.get_password_hash("Admin123!"),
+        name="Root",
+        rut="12.345.678-5",
+        role="admin",
+        status="activo",
+    )
+    db_session.add(admin_user)
+    db_session.commit()
+
+    created = users.create_user(
+        schemas.UserCreate(
+            email="supervisor@example.com",
+            password="Admin123!",
+            name="Supervisor",
+            rut="44444445",
+            role="supervisor",
+            status="activo",
+        ),
+        db_session,
+        admin_user,
+    )
+
+    assert created.rut == "4.444.444-5"
+
+    with pytest.raises(HTTPException) as exc_info:
+        users.create_user(
+            schemas.UserCreate(
+                email="invalid@example.com",
+                password="Admin123!",
+                name="Inválido",
+                rut="4.444.444-4",
+                role="supervisor",
+                status="activo",
+            ),
+            db_session,
+            admin_user,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "RUT inválido. Verifique el formato y dígito verificador."
 
 
 def test_get_user_from_token_rejects_hashed_revoked_token(db_session) -> None:

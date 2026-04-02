@@ -190,6 +190,27 @@ def read_users(
     users = db.query(models.User).offset(skip).limit(limit).all()
     return users
 
+@router.get("/supervised-options", response_model=List[schemas.UserResponse])
+def read_supervised_user_options(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    if not (PermissionChecker.is_admin(current_user) or PermissionChecker.is_supervisor(current_user)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene permiso para consultar usuarios supervisados.",
+        )
+
+    return (
+        db.query(models.User)
+        .filter(
+            models.User.status == "activo",
+            models.User.role != "supervisor",
+        )
+        .order_by(models.User.name.asc())
+        .all()
+    )
+
 @router.get("/{user_id}", response_model=schemas.UserResponse)
 def read_user(
     user_id: int, 
@@ -211,11 +232,15 @@ def create_user(
     # Si es el primer usuario, se crea con script aparte.
     current_user: models.User = Depends(auth.get_current_admin_user)
 ):
+    normalized_rut = auth.normalize_rut(user.rut)
+    if not auth.validate_rut(normalized_rut):
+        raise HTTPException(status_code=400, detail="RUT inválido. Verifique el formato y dígito verificador.")
+
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    db_rut = db.query(models.User).filter(models.User.rut == user.rut).first()
+    db_rut = db.query(models.User).filter(models.User.rut == normalized_rut).first()
     if db_rut:
         raise HTTPException(status_code=400, detail="RUT already registered")
 
@@ -224,7 +249,7 @@ def create_user(
         email=user.email, 
         password_hash=hashed_password,
         name=user.name,
-        rut=user.rut,
+        rut=normalized_rut,
         role=user.role,
         status=user.status
     )
@@ -254,6 +279,20 @@ def update_user(
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = user_update.dict(exclude_unset=True)
+
+    if "rut" in update_data and isinstance(update_data["rut"], str):
+        normalized_rut = auth.normalize_rut(update_data["rut"])
+        if not auth.validate_rut(normalized_rut):
+            raise HTTPException(status_code=400, detail="RUT inválido. Verifique el formato y dígito verificador.")
+
+        existing_rut = db.query(models.User).filter(
+            models.User.rut == normalized_rut,
+            models.User.id != user_id,
+        ).first()
+        if existing_rut:
+            raise HTTPException(status_code=400, detail="RUT already registered")
+
+        update_data["rut"] = normalized_rut
     
     if "password" in update_data and isinstance(update_data["password"], str) and update_data["password"]:
         update_data["password_hash"] = auth.get_password_hash(update_data["password"])
