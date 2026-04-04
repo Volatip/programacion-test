@@ -31,7 +31,20 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: /programación/i })).toBeTruthy();
     expect(screen.queryByText("RRHH")).toBeNull();
     expect(screen.queryByText("Carga")).toBeNull();
+    expect(screen.queryByText("Bajas")).toBeNull();
     expect(screen.queryByText("Periodos")).toBeNull();
     expect(screen.queryByText("Usuarios")).toBeNull();
+  });
+
+  it("shows bajas link for admin", () => {
+    useAuthMock.mockReturnValue({ user: { role: "admin" } });
+
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("link", { name: /bajas/i })).toBeTruthy();
   });
 });

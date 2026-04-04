@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from starlette.datastructures import Headers, UploadFile
 
 from api import auth, main, models, runtime_config, schemas
+from api.dismiss_reasons import ensure_default_dismiss_reasons
 from api.routers import config as config_router
 from api.routers import funcionarios as funcionarios_router
 from api.routers import general as general_router
@@ -841,6 +842,7 @@ def test_dismiss_funcionario_only_updates_same_period_contracts_and_hidden_recor
     keep_period = make_period(name="2026-12", month=12)
     db_session.add_all([user, target_period, keep_period])
     db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
 
     target_a = models.Funcionario(name="Ana Uno", title="Enfermero", rut="72000001", dv="K", period_id=target_period.id, status="activo", is_active_roster=True)
     target_b = models.Funcionario(name="Ana Dos", title="Enfermero", rut="72000001", dv="K", period_id=target_period.id, status="activo", is_active_roster=True)
@@ -868,6 +870,59 @@ def test_dismiss_funcionario_only_updates_same_period_contracts_and_hidden_recor
     assert [(row.period_id, row.reason) for row in hidden_rows] == [(target_period.id, "Agregado por Error")]
     assert {binding.funcionario_id for binding in remaining_bindings} == {keep_other_period.id}
     assert audit.period_id == target_period.id
+
+
+def test_dismiss_funcionario_requires_suboption_and_records_configured_reason(db_session) -> None:
+    user = make_user(user_id=60, role="user")
+    period = make_period(name="2027-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Marta Comisión",
+        title="Enfermero",
+        rut="76000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    commission_reason = db_session.query(models.DismissReason).filter_by(system_key="comision-servicio").one()
+    total_suboption = db_session.query(models.DismissReasonSuboption).filter_by(reason_id=commission_reason.id, system_key="total").one()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.dismiss_funcionario(
+            funcionario_id=funcionario.id,
+            payload=schemas.DismissSelectionRequest(reason_id=commission_reason.id),
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "Suboption" in str(exc_info.value.detail)
+
+    response = funcionarios_router.dismiss_funcionario(
+        funcionario_id=funcionario.id,
+        payload=schemas.DismissSelectionRequest(reason_id=commission_reason.id, suboption_id=total_suboption.id),
+        db=db_session,
+        current_user=user,
+    )
+
+    db_session.refresh(funcionario)
+    audit = db_session.query(models.OfficialAudit).filter_by(funcionario_id=funcionario.id, action="Dismiss").order_by(models.OfficialAudit.id.desc()).first()
+
+    assert funcionario.status == "inactivo"
+    assert response["reason"] == "Comisión de Servicio - Total"
+    assert audit is not None
+    assert audit.reason == "Comisión de Servicio - Total"
+    assert audit.suboption == "Total"
+    assert audit.reason_category == "mobility"
 
 
 def test_activate_funcionario_only_reactivates_same_period_contracts(db_session) -> None:

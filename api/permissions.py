@@ -232,3 +232,10 @@ class PermissionChecker:
             user,
             "Solo los administradores pueden gestionar las ayudas contextuales.",
         )
+
+    @staticmethod
+    def check_can_manage_dismiss_reasons(user: models.User):
+        return PermissionChecker.require_admin(
+            user,
+            "Solo los administradores pueden gestionar los motivos de baja.",
+        )

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, not_, or_
 from typing import Dict, Optional
 from ..database import get_db
+from ..dismiss_reasons import REASON_CATEGORY_MOBILITY, REASON_CATEGORY_RESIGNATION, resolve_reason_category
 from ..models import (
     Funcionario,
     Group,
@@ -140,6 +141,7 @@ def get_dashboard_stats(
 
     inactive_query = db.query(
         OfficialAudit.reason,
+        OfficialAudit.reason_category,
         func.count(OfficialAudit.funcionario_id),
     ).join(
         latest_audit_subquery,
@@ -160,21 +162,16 @@ def get_dashboard_stats(
             UserOfficial, UserOfficial.funcionario_id == Funcionario.id
         ).filter(UserOfficial.user_id == effective_user_id)
 
-    inactive_counts_by_reason = inactive_query.group_by(OfficialAudit.reason).all()
+    inactive_counts_by_reason = inactive_query.group_by(OfficialAudit.reason, OfficialAudit.reason_category).all()
 
     inactive_renuncia = 0
     inactive_mobility = 0
-    movilidad_reasons = [
-        "Cambio de servicio",
-        "ComisiÃ³n de Servicio",
-        "Permiso sin Goce",
-        "ComisiÃ³n de Estudio",
-    ]
 
-    for reason, count in inactive_counts_by_reason:
-        if reason == "Renuncia":
+    for reason, reason_category, count in inactive_counts_by_reason:
+        resolved_category = resolve_reason_category(reason_category, reason)
+        if resolved_category == REASON_CATEGORY_RESIGNATION:
             inactive_renuncia += count
-        elif reason in movilidad_reasons:
+        elif resolved_category == REASON_CATEGORY_MOBILITY:
             inactive_mobility += count
 
     total_inactive_query = db.query(Funcionario.id).filter(

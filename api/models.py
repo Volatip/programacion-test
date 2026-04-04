@@ -273,6 +273,9 @@ class UserHiddenOfficial(Base):
     funcionario_rut = Column(String, index=True, nullable=False)
     period_id = Column(Integer, ForeignKey("programming_periods.id"), nullable=True, index=True)
     reason = Column(String, nullable=True)
+    suboption = Column(String, nullable=True)
+    dismiss_reason_id = Column(Integer, nullable=True, index=True)
+    dismiss_suboption_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
@@ -290,11 +293,58 @@ class OfficialAudit(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     action = Column(String, nullable=False) # "Dismiss" or "Delete"
     reason = Column(String, nullable=False) # "Renuncia", "Cambio de servicio", "Agregado por Error"
+    suboption = Column(String, nullable=True)
+    dismiss_reason_id = Column(Integer, nullable=True, index=True)
+    dismiss_suboption_id = Column(Integer, nullable=True, index=True)
+    reason_category = Column(String, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     user = relationship("User")
     period = relationship("ProgrammingPeriod")
+
+
+class DismissReason(Base):
+    __tablename__ = "dismiss_reasons"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_dismiss_reasons_name"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    system_key = Column(String, nullable=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    action_type = Column(String, nullable=False, default="dismiss")
+    reason_category = Column(String, nullable=False, default="other")
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    suboptions = relationship(
+        "DismissReasonSuboption",
+        back_populates="reason",
+        cascade="all, delete-orphan",
+        order_by="DismissReasonSuboption.sort_order",
+    )
+
+
+class DismissReasonSuboption(Base):
+    __tablename__ = "dismiss_reason_suboptions"
+    __table_args__ = (
+        UniqueConstraint("reason_id", "name", name="uq_dismiss_reason_suboptions_reason_name"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    reason_id = Column(Integer, ForeignKey("dismiss_reasons.id"), nullable=False, index=True)
+    system_key = Column(String, nullable=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    reason = relationship("DismissReason", back_populates="suboptions")
 
 class Config(Base):
     __tablename__ = "configs"

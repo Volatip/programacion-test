@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowRightLeft, Briefcase, CalendarOff, CheckCircle2, GraduationCap, Search, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import type React from "react";
 import type { Funcionario } from "../../context/OfficialsContextDefs";
+import type { DismissReason } from "../../lib/dismissReasons";
 import { Modal } from "../ui/Modal";
 import { Toast, type ToastType } from "../ui/Toast";
 
@@ -12,12 +13,17 @@ interface FuncionariosModalsProps {
   isDismissModalOpen: boolean;
   setIsDismissModalOpen: (value: boolean) => void;
   isProcessingDismiss: boolean;
-  dismissReason: string;
-  setDismissReason: (value: string) => void;
+  dismissReasons: DismissReason[];
+  isLoadingDismissReasons: boolean;
+  dismissReasonId: number | null;
+  setDismissReasonId: (value: number | null) => void;
+  dismissSuboptionId: number | null;
+  setDismissSuboptionId: (value: number | null) => void;
   setShowConfirmHardDelete: (value: boolean) => void;
   setDismissError: (value: string) => void;
   dismissError: string;
   showConfirmHardDelete: boolean;
+  selectedDismissReason: DismissReason | null;
   handleConfirmDismiss: () => Promise<void>;
   isAddOfficialModalOpen: boolean;
   setIsAddOfficialModalOpen: (value: boolean) => void;
@@ -41,12 +47,17 @@ export function FuncionariosModals({
   isDismissModalOpen,
   setIsDismissModalOpen,
   isProcessingDismiss,
-  dismissReason,
-  setDismissReason,
+  dismissReasons,
+  isLoadingDismissReasons,
+  dismissReasonId,
+  setDismissReasonId,
+  dismissSuboptionId,
+  setDismissSuboptionId,
   setShowConfirmHardDelete,
   setDismissError,
   dismissError,
   showConfirmHardDelete,
+  selectedDismissReason,
   handleConfirmDismiss,
   isAddOfficialModalOpen,
   setIsAddOfficialModalOpen,
@@ -61,6 +72,27 @@ export function FuncionariosModals({
   toastType,
   setToastOpen,
 }: FuncionariosModalsProps) {
+  const selectedDismissSuboption = selectedDismissReason?.suboptions.find((suboption) => suboption.id === dismissSuboptionId) ?? null;
+
+  const getReasonIcon = (reason: DismissReason) => {
+    if (reason.action_type === "hide") return Trash2;
+
+    switch (reason.name) {
+      case "Renuncia":
+        return UserMinus;
+      case "Cambio de servicio":
+        return ArrowRightLeft;
+      case "Comisión de Servicio":
+        return Briefcase;
+      case "Permiso sin Goce":
+        return CalendarOff;
+      case "Comisión de Estudio":
+        return GraduationCap;
+      default:
+        return UserMinus;
+    }
+  };
+
   return (
     <>
       <Modal
@@ -120,24 +152,22 @@ export function FuncionariosModals({
           <div className="space-y-3">
             <label className="block text-sm font-semibold text-gray-900 dark:text-white">Motivo de la baja</label>
             <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: "Renuncia", icon: UserMinus, label: "Renuncia", desc: "El funcionario renuncia voluntariamente" },
-                { id: "Cambio de servicio", icon: ArrowRightLeft, label: "Cambio de servicio", desc: "Traslado a otro establecimiento o unidad" },
-                { id: "Comisión de Servicio", icon: Briefcase, label: "Comisión de Servicio", desc: "Asignación temporal a otra unidad o servicio" },
-                { id: "Permiso sin Goce", icon: CalendarOff, label: "Permiso sin Goce", desc: "Ausencia temporal sin remuneración" },
-                { id: "Comisión de Estudio", icon: GraduationCap, label: "Comisión de Estudio", desc: "Ausencia autorizada por motivos académicos" },
-                { id: "Agregado por Error", icon: Trash2, label: "Agregado por Error", desc: "Eliminar registro erróneo permanentemente" },
-              ].map((item) => (
+              {isLoadingDismissReasons ? (
+                <div className="col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Cargando motivos disponibles...</div>
+              ) : dismissReasons.map((item) => {
+                const Icon = getReasonIcon(item);
+                return (
                 <div
                   key={item.id}
                   onClick={() => {
-                    setDismissReason(item.id);
+                    setDismissReasonId(item.id);
+                    setDismissSuboptionId(null);
                     setShowConfirmHardDelete(false);
                     setDismissError("");
                   }}
                   className={`
                     relative flex flex-col items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 group h-full
-                    ${dismissReason === item.id
+                    ${dismissReasonId === item.id
                       ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm"
                       : "border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50"}
                   `}
@@ -146,33 +176,56 @@ export function FuncionariosModals({
                     <div
                       className={`
                         p-2 rounded-lg shrink-0 transition-colors
-                        ${dismissReason === item.id ? "bg-primary text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-600"}
+                        ${dismissReasonId === item.id ? "bg-primary text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-600"}
                       `}
                     >
-                      <item.icon className="w-5 h-5" />
+                      <Icon className="w-5 h-5" />
                     </div>
-                    {dismissReason === item.id && <CheckCircle2 className="w-5 h-5 text-primary animate-in zoom-in duration-200" />}
+                    {dismissReasonId === item.id && <CheckCircle2 className="w-5 h-5 text-primary animate-in zoom-in duration-200" />}
                   </div>
 
                   <div className="flex-1">
-                    <span className={`font-medium block mb-1 ${dismissReason === item.id ? "text-primary dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
-                      {item.label}
+                    <span className={`font-medium block mb-1 ${dismissReasonId === item.id ? "text-primary dark:text-blue-400" : "text-gray-900 dark:text-white"}`}>
+                      {item.name}
                     </span>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-snug">{item.desc}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-snug">{item.description || "Sin descripción configurada"}</p>
                   </div>
 
                   <input
                     type="radio"
                     name="dismissReason"
                     value={item.id}
-                    checked={dismissReason === item.id}
+                    checked={dismissReasonId === item.id}
                     onChange={() => {}}
                     className="sr-only"
                   />
                 </div>
-              ))}
+              )})}
             </div>
           </div>
+
+          {selectedDismissReason && selectedDismissReason.suboptions.length > 0 && (
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-gray-900 dark:text-white">Subopción obligatoria</label>
+              <div className="grid grid-cols-2 gap-3">
+                {selectedDismissReason.suboptions.map((suboption) => (
+                  <button
+                    key={suboption.id}
+                    type="button"
+                    onClick={() => {
+                      setDismissSuboptionId(suboption.id);
+                      setDismissError("");
+                      setShowConfirmHardDelete(false);
+                    }}
+                    className={`rounded-xl border-2 px-4 py-3 text-left transition ${dismissSuboptionId === suboption.id ? "border-primary bg-primary/5 text-primary" : "border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-200"}`}
+                  >
+                    <div className="font-semibold">{suboption.name}</div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{suboption.description || "Sin descripción"}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {dismissError && (
             <div className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-800 flex items-center gap-2 animate-in fade-in slide-in-from-top-1 transition-colors">
@@ -188,10 +241,10 @@ export function FuncionariosModals({
                 <div className="space-y-2">
                   <p className="font-bold text-red-900 dark:text-red-200">Advertencia Crítica</p>
                   <p className="leading-relaxed">
-                    La opción <span className="font-bold">"Agregado por Error"</span> eliminará <span className="underline decoration-red-400 decoration-2 underline-offset-2">permanentemente</span> al funcionario y toda su información asociada (programaciones, horarios, etc.) de la base de datos.
+                    La opción <span className="font-bold">"{selectedDismissReason?.name}"</span>{selectedDismissSuboption ? ` con subopción "${selectedDismissSuboption.name}"` : ""} ocultará al funcionario del ámbito del usuario actual.
                   </p>
                   <p className="font-medium bg-red-100/50 dark:bg-red-900/40 p-2 rounded text-center border border-red-200/50 dark:border-red-700/50">
-                    Esta acción NO se puede deshacer.
+                    Revise cuidadosamente antes de confirmar.
                   </p>
                 </div>
               </div>
@@ -208,10 +261,10 @@ export function FuncionariosModals({
             </button>
             <button
               onClick={handleConfirmDismiss}
-              disabled={isProcessingDismiss || !dismissReason}
+              disabled={isProcessingDismiss || !dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId)}
               className={`
                 px-6 py-2.5 text-white rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center gap-2 transform active:scale-95
-                ${!dismissReason
+                ${!dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId)
                   ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
                   : showConfirmHardDelete
                     ? "bg-red-600 hover:bg-red-700 hover:shadow-red-200"

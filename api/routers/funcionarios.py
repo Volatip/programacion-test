@@ -7,6 +7,7 @@ import logging
 import pandas as pd
 import io
 from api import models, schemas, database, auth
+from api.dismiss_reasons import HIDE_ACTION, resolve_dismiss_selection, resolve_reason_category
 from api.query_bounds import normalize_limit, normalize_skip
 from api.permissions import PermissionChecker
 
@@ -993,16 +994,16 @@ def assign_funcionario_group(
 @router.post("/{funcionario_id}/dismiss")
 def dismiss_funcionario(
     funcionario_id: int,
-    payload: dict = Body(...),
+    payload: schemas.DismissSelectionRequest = Body(...),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
-    reason = payload.get("reason")
+    payload_dict = payload.model_dump(exclude_none=True) if hasattr(payload, "model_dump") else dict(payload)
     PermissionChecker.require_read_only_access(current_user)
-    user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id")) # Who performed the action
-    
-    if not reason:
-        raise HTTPException(status_code=400, detail="Reason is required")
+    user_id = PermissionChecker.resolve_user_scope(current_user, payload_dict.get("user_id")) # Who performed the action
+    selection = resolve_dismiss_selection(db, payload_dict)
+    reason_label = selection.display_label
+    reason_category = resolve_reason_category(selection.reason.reason_category, reason_label)
         
     funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
     if not funcionario:
@@ -1011,7 +1012,7 @@ def dismiss_funcionario(
     PermissionChecker.check_can_access_funcionario(current_user, funcionario_id, db)
         
     # Determine Action
-    if reason in ["Renuncia", "Cambio de servicio", "Comisión de Servicio", "Permiso sin Goce", "Comisión de Estudio"]:
+    if selection.reason.action_type != HIDE_ACTION:
         # Soft Delete / Deactivate
         # Update all contracts with same RUT? 
         # Usually dismiss applies to the person, so all contracts with that RUT should be updated.
@@ -1027,7 +1028,7 @@ def dismiss_funcionario(
             
         action = "Dismiss"
         
-    elif reason == "Agregado por Error":
+    else:
         # Logical Delete (Hide from User)
         if not user_id:
              raise HTTPException(status_code=400, detail="User ID required for logical delete")
@@ -1045,7 +1046,10 @@ def dismiss_funcionario(
                     user_id=user_id,
                     funcionario_rut=funcionario.rut,
                     period_id=funcionario.period_id,
-                    reason=reason
+                    reason=reason_label,
+                    suboption=selection.suboption.name if selection.suboption else None,
+                    dismiss_reason_id=selection.reason.id,
+                    dismiss_suboption_id=selection.suboption.id if selection.suboption else None,
                 )
                 db.add(hidden)
         
@@ -1071,11 +1075,9 @@ def dismiss_funcionario(
              db.query(models.UserOfficial).filter(
                  models.UserOfficial.user_id == user_id, 
                  models.UserOfficial.funcionario_id == funcionario.id
-             ).delete()
-             
+              ).delete()
+              
         action = "Hide"
-    else:
-        raise HTTPException(status_code=400, detail="Invalid reason")
 
     # Audit Log
     audit = models.OfficialAudit(
@@ -1085,7 +1087,11 @@ def dismiss_funcionario(
         period_id=funcionario.period_id,
         user_id=user_id,
         action=action,
-        reason=reason
+        reason=reason_label,
+        suboption=selection.suboption.name if selection.suboption else None,
+        dismiss_reason_id=selection.reason.id,
+        dismiss_suboption_id=selection.suboption.id if selection.suboption else None,
+        reason_category=reason_category,
     )
     db.add(audit)
     
@@ -1098,7 +1104,13 @@ def dismiss_funcionario(
             detail="Ya existe un ocultamiento registrado para ese usuario y funcionario.",
         )
     
-    return {"message": f"Funcionario processed: {action}"}
+    return {
+        "message": f"Funcionario processed: {action}",
+        "action": action,
+        "reason": reason_label,
+        "reason_id": selection.reason.id,
+        "suboption_id": selection.suboption.id if selection.suboption else None,
+    }
 
 @router.post("/{funcionario_id}/activate")
 def activate_funcionario(

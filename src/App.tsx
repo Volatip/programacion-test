@@ -16,6 +16,7 @@ const Programacion = lazy(() => import("./pages/Programacion").then((module) => 
 const ProgramacionGrupo = lazy(() => import("./pages/ProgramacionGrupo").then((module) => ({ default: module.ProgramacionGrupo })));
 const ProgramacionLista = lazy(() => import("./pages/ProgramacionLista").then((module) => ({ default: module.ProgramacionLista })));
 const General = lazy(() => import("./pages/General").then((module) => ({ default: module.General })));
+const Bajas = lazy(() => import("./pages/Bajas").then((module) => ({ default: module.Bajas })));
 
 function lazyPage(element: ReactNode) {
   return <Suspense fallback={null}>{element}</Suspense>;
@@ -35,6 +36,7 @@ function App() {
               </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
                 <Route path="/usuarios" element={lazyPage(<Users />)} />
+                <Route path="/bajas" element={lazyPage(<Bajas />)} />
                 <Route path="/admin/ayudas-contextuales" element={lazyPage(<ContextualHelpAdmin />)} />
                 <Route path="/rrhh" element={lazyPage(<RRHH />)} />
                 <Route path="/carga" element={lazyPage(<Carga />)} />

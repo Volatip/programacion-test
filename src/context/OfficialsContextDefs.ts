@@ -45,7 +45,7 @@ export interface Group {
 export interface OfficialsContextType {
   officials: Funcionario[];
   addOfficial: (official: Funcionario) => Promise<void>;
-  removeOfficial: (id: number, reason?: string) => Promise<void>;
+  removeOfficial: (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string }) => Promise<void>;
   activateOfficial: (id: number) => Promise<void>; // Added activate
   updateOfficialLocally: (id: number, patch: Partial<Funcionario>) => void;
   searchOfficials: (query: string, global?: boolean) => Promise<Funcionario[]>;

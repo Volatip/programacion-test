@@ -74,7 +74,7 @@ def test_collect_readiness_diagnostics_accepts_current_head_without_duplicates(t
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         connection.execute(
             text(
-                "INSERT INTO alembic_version (version_num) VALUES ('0006_audits_hidden_scope')"
+                "INSERT INTO alembic_version (version_num) VALUES ('0007_dismiss_reasons')"
             )
         )
 

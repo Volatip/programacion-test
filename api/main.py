@@ -10,9 +10,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from .limiter import limiter
-from .routers import users, funcionarios, stats, groups, config, periods, programming, contextual_help, general
+from .routers import users, funcionarios, stats, groups, config, periods, programming, contextual_help, general, bajas
 from . import models, database, auth, runtime_config
 from .contextual_help_defaults import ensure_default_contextual_help
+from .dismiss_reasons import ensure_default_dismiss_reasons
 from .websockets import manager
 import os
 
@@ -31,6 +32,30 @@ def configure_logging() -> None:
 
 
 logger = logging.getLogger("api.main")
+
+LOCAL_SERVER_HOSTS = ["10.6.70.225"]
+LOCAL_SERVER_ORIGINS = [
+    "http://10.6.70.225",
+    "https://10.6.70.225",
+    "http://localhost",
+    "https://localhost",
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+]
+
+
+def unique_preserving_order(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        candidate = value.strip()
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        normalized.append(candidate)
+
+    return normalized
 
 
 def normalize_origin(origin: str) -> str | None:
@@ -104,15 +129,50 @@ def get_docs_urls() -> tuple[str | None, str | None, str | None]:
 
 
 def get_allowed_origins() -> list[str]:
-    return runtime_config.get_allowed_origins()
+    configured_origins: list[str] = []
+    try:
+        configured_origins = runtime_config.get_allowed_origins()
+    except RuntimeError:
+        configured_origins = []
+
+    return unique_preserving_order(
+        [
+            *configured_origins,
+            *runtime_config.LOCAL_ALLOWED_ORIGINS,
+            *LOCAL_SERVER_ORIGINS,
+        ]
+    )
 
 
 def get_websocket_allowed_origins() -> list[str]:
-    return runtime_config.get_websocket_allowed_origins()
+    configured_origins: list[str] = []
+    try:
+        configured_origins = runtime_config.get_websocket_allowed_origins()
+    except RuntimeError:
+        configured_origins = []
+
+    return unique_preserving_order(
+        [
+            *configured_origins,
+            *get_allowed_origins(),
+        ]
+    )
 
 
 def get_trusted_hosts() -> list[str]:
-    return runtime_config.get_trusted_hosts()
+    configured_hosts: list[str] = []
+    try:
+        configured_hosts = runtime_config.get_trusted_hosts()
+    except RuntimeError:
+        configured_hosts = []
+
+    return unique_preserving_order(
+        [
+            *configured_hosts,
+            *runtime_config.LOCAL_TRUSTED_HOSTS,
+            *LOCAL_SERVER_HOSTS,
+        ]
+    )
 
 
 def is_allowed_websocket_origin(origin: str | None, allowed_origins: list[str]) -> bool:
@@ -165,6 +225,10 @@ def bootstrap_initial_data() -> None:
         created_help_pages = ensure_default_contextual_help(db)
         if created_help_pages:
             logger.info("Seeded %s contextual help page(s)", created_help_pages)
+
+        created_dismiss_reasons = ensure_default_dismiss_reasons(db)
+        if created_dismiss_reasons:
+            logger.info("Seeded %s dismiss reason(s)", created_dismiss_reasons)
     except Exception:
         db.rollback()
         logger.exception("Bootstrap admin initialization failed")
@@ -244,6 +308,7 @@ app.include_router(periods.router, prefix="/api/periods", tags=["periods"])
 app.include_router(programming.router, prefix="/api/programming", tags=["programming"])
 app.include_router(contextual_help.router, prefix="/api/contextual-help", tags=["contextual-help"])
 app.include_router(general.router, prefix="/api/general", tags=["general"])
+app.include_router(bajas.router, prefix="/api/bajas", tags=["bajas"])
 
 @app.websocket("/ws/info-bar")
 async def websocket_endpoint(websocket: WebSocket):

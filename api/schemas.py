@@ -57,6 +57,67 @@ class ContextualHelpPageResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class DismissReasonSuboptionBase(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = ""
+    sort_order: int = 0
+
+
+class DismissReasonSuboptionCreate(DismissReasonSuboptionBase):
+    pass
+
+
+class DismissReasonSuboptionUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class DismissReasonSuboptionResponse(DismissReasonSuboptionBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class DismissReasonBase(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = ""
+    action_type: str = Field(pattern="^(dismiss|hide)$")
+    reason_category: str = Field(pattern="^(resignation|mobility|other)$")
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class DismissReasonCreate(DismissReasonBase):
+    suboptions: List[DismissReasonSuboptionCreate] = []
+
+
+class DismissReasonUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = None
+    action_type: Optional[str] = Field(default=None, pattern="^(dismiss|hide)$")
+    reason_category: Optional[str] = Field(default=None, pattern="^(resignation|mobility|other)$")
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class DismissReasonResponse(DismissReasonBase):
+    id: int
+    suboptions: List[DismissReasonSuboptionResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class DismissSelectionRequest(BaseModel):
+    reason_id: Optional[int] = None
+    reason: Optional[str] = None
+    suboption_id: Optional[int] = None
+    suboption: Optional[str] = None
+    user_id: Optional[int] = None
+
 class SpecialtyStatResponse(BaseModel):
     new_consult_percentage: float
     yield_new: float

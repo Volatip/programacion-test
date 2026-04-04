@@ -213,27 +213,34 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const removeOfficial = async (id: number, reason?: string) => {
+  const removeOfficial = async (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string }) => {
     if (!user) return;
     try {
       if (reason) {
-        // New dismiss logic
+        const payload = typeof reason === 'string'
+          ? { reason }
+          : {
+              reason_id: reason.reasonId,
+              reason: reason.reason,
+              suboption_id: reason.suboptionId,
+              suboption: reason.suboption,
+            };
+
         const response = await fetchWithAuth(buildApiUrl(`/funcionarios/${id}/dismiss`), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ reason: reason })
+            body: JSON.stringify(payload)
         });
         
         if (response.ok) {
-            // Update UI accordingly
-            if (reason === "Agregado por Error") {
+            const result = await response.json();
+            if (result.action === "Hide") {
                  setOfficials(prev => prev.filter(o => o.id !== id));
-            } else {
-                 // Soft delete/Status change
-                 setOfficials(prev => prev.map(o => o.id === id ? { ...o, status: 'inactivo' } : o));
-            }
+             } else {
+                 setOfficials(prev => prev.map(o => o.id === id ? { ...o, status: 'inactivo', inactiveReason: result.reason } : o));
+             }
         }
       } else {
         // Fallback or just unbind logic if needed (though UI should drive this)

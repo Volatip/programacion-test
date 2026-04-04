@@ -9,6 +9,7 @@ import { FuncionariosTable } from "../components/funcionarios/FuncionariosTable"
 import { FuncionariosToolbar } from "../components/funcionarios/FuncionariosToolbar";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { useAuth } from "../context/AuthContext";
+import { dismissReasonsApi, type DismissReason } from "../lib/dismissReasons";
 import { isSupervisorRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
@@ -49,10 +50,13 @@ export function Funcionarios() {
   // Delete / Dismiss Modal State
   const [isDismissModalOpen, setIsDismissModalOpen] = useState(false);
   const [selectedOfficialId, setSelectedOfficialId] = useState<number | null>(null);
-  const [dismissReason, setDismissReason] = useState("");
+  const [dismissReasons, setDismissReasons] = useState<DismissReason[]>([]);
+  const [dismissReasonId, setDismissReasonId] = useState<number | null>(null);
+  const [dismissSuboptionId, setDismissSuboptionId] = useState<number | null>(null);
   const [dismissError, setDismissError] = useState("");
   const [isProcessingDismiss, setIsProcessingDismiss] = useState(false);
   const [showConfirmHardDelete, setShowConfirmHardDelete] = useState(false);
+  const [isLoadingDismissReasons, setIsLoadingDismissReasons] = useState(false);
 
   // Activate Official Modal State
   const [isActivateModalOpen, setIsActivateModalOpen] = useState(false);
@@ -90,6 +94,37 @@ export function Funcionarios() {
     return () => clearTimeout(delayDebounceFn);
   }, [addOfficialSearchQuery, searchOfficials, officials]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDismissReasons = async () => {
+      setIsLoadingDismissReasons(true);
+      try {
+        const data = await dismissReasonsApi.list(true);
+        if (!cancelled) {
+          setDismissReasons(data);
+        }
+      } catch (error) {
+        console.error("Error loading dismiss reasons:", error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDismissReasons(false);
+        }
+      }
+    };
+
+    void loadDismissReasons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedDismissReason = dismissReasons.find((reason) => reason.id === dismissReasonId) ?? null;
+  const selectedDismissSuboption = selectedDismissReason?.suboptions.find((suboption) => suboption.id === dismissSuboptionId) ?? null;
+  const requiresSuboption = Boolean(selectedDismissReason && selectedDismissReason.suboptions.length > 0);
+  const isHideReason = selectedDismissReason?.action_type === "hide";
+
   const handleConfirmActivate = async () => {
     if (!selectedOfficialId) return;
     
@@ -114,27 +149,36 @@ export function Funcionarios() {
   const handleInitiateDelete = (id: number) => {
     setSelectedOfficialId(id);
     setIsDismissModalOpen(true);
-    setDismissReason("");
+    setDismissReasonId(null);
+    setDismissSuboptionId(null);
     setDismissError("");
     setShowConfirmHardDelete(false);
   };
   
   const handleConfirmDismiss = async () => {
-    if (!selectedOfficialId || !dismissReason) {
+    if (!selectedOfficialId || !selectedDismissReason) {
         setDismissError("Debe seleccionar un motivo.");
         return;
     }
 
-    if (dismissReason === "Agregado por Error" && !showConfirmHardDelete) {
+    if (requiresSuboption && !selectedDismissSuboption) {
+        setDismissError("Debe seleccionar una subopción.");
+        return;
+    }
+
+    if (isHideReason && !showConfirmHardDelete) {
         setShowConfirmHardDelete(true);
         return;
     }
     
     setIsProcessingDismiss(true);
     try {
-        await removeOfficial(selectedOfficialId, dismissReason);
+        await removeOfficial(selectedOfficialId, {
+          reasonId: selectedDismissReason.id,
+          suboptionId: selectedDismissSuboption?.id,
+        });
         setIsDismissModalOpen(false);
-        showToast(showConfirmHardDelete ? "Funcionario eliminado correctamente" : "Funcionario dado de baja correctamente", "success");
+        showToast(isHideReason ? "Funcionario eliminado correctamente" : "Funcionario dado de baja correctamente", "success");
     } catch (error) {
         console.error("Error dismissing:", error);
         setDismissError("Error al procesar la solicitud.");
@@ -287,21 +331,26 @@ export function Funcionarios() {
             />
           </div>
           
-          <FuncionariosModals
+        <FuncionariosModals
             isActivateModalOpen={isActivateModalOpen}
             setIsActivateModalOpen={setIsActivateModalOpen}
             isProcessingActivation={isProcessingActivation}
             handleConfirmActivate={handleConfirmActivate}
-            isDismissModalOpen={isDismissModalOpen}
-            setIsDismissModalOpen={setIsDismissModalOpen}
-            isProcessingDismiss={isProcessingDismiss}
-            dismissReason={dismissReason}
-            setDismissReason={setDismissReason}
-            setShowConfirmHardDelete={setShowConfirmHardDelete}
-            setDismissError={setDismissError}
-            dismissError={dismissError}
-            showConfirmHardDelete={showConfirmHardDelete}
-            handleConfirmDismiss={handleConfirmDismiss}
+          isDismissModalOpen={isDismissModalOpen}
+          setIsDismissModalOpen={setIsDismissModalOpen}
+          isProcessingDismiss={isProcessingDismiss}
+          dismissReasons={dismissReasons}
+          isLoadingDismissReasons={isLoadingDismissReasons}
+          dismissReasonId={dismissReasonId}
+          setDismissReasonId={setDismissReasonId}
+          dismissSuboptionId={dismissSuboptionId}
+          setDismissSuboptionId={setDismissSuboptionId}
+          setShowConfirmHardDelete={setShowConfirmHardDelete}
+          setDismissError={setDismissError}
+          dismissError={dismissError}
+          showConfirmHardDelete={showConfirmHardDelete}
+          selectedDismissReason={selectedDismissReason}
+          handleConfirmDismiss={handleConfirmDismiss}
             isAddOfficialModalOpen={isAddOfficialModalOpen}
             setIsAddOfficialModalOpen={setIsAddOfficialModalOpen}
             addOfficialSearchQuery={addOfficialSearchQuery}
