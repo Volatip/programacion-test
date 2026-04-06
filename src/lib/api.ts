@@ -1,27 +1,65 @@
-function getDefaultApiOrigin(): string {
+const LOCAL_FRONTEND_PORTS = new Set(["3000", "5173", "5174", "5175", "5176"]);
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isLocalDevFrontend(): boolean {
   if (typeof window === "undefined") {
-    return "http://localhost:8000";
+    return false;
   }
 
-  const hostname = window.location.hostname || "localhost";
-  const isLocalEnvironment = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  return Boolean(import.meta.env.DEV) || LOCAL_FRONTEND_PORTS.has(window.location.port || "");
+}
 
-  if (isLocalEnvironment) {
-    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+function getDefaultAppBasePath(): string {
+  if (typeof window === "undefined") {
+    return "/programacion";
+  }
+
+  return isLocalDevFrontend() ? "" : "/programacion";
+}
+
+function getDefaultApiOrigin(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+  const hostname = window.location.hostname || "localhost";
+
+  if (isLocalHostname(hostname) && isLocalDevFrontend()) {
     return `${protocol}//${hostname}:8000`;
   }
 
-  return `${window.location.origin}/programacion`;
+  return `${protocol}//${hostname}${window.location.port ? `:${window.location.port}` : ""}`;
+}
+
+function getDefaultApiBasePath(): string {
+  return `${getDefaultAppBasePath()}/api`;
+}
+
+function getAppMountPathFromApiBasePath(apiBasePath: string): string {
+  if (apiBasePath === "/api") {
+    return "";
+  }
+
+  return apiBasePath.endsWith("/api") ? apiBasePath.slice(0, -4) : apiBasePath;
 }
 
 const DEFAULT_API_ORIGIN = getDefaultApiOrigin();
+const DEFAULT_API_BASE_PATH = getDefaultApiBasePath();
+const DEFAULT_APP_BASE_PATH = getAppMountPathFromApiBasePath(DEFAULT_API_BASE_PATH);
 const rawApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
+const rawApiBasePath = import.meta.env.VITE_API_BASE_PATH?.trim();
 const rawWsOrigin = import.meta.env.VITE_WS_ORIGIN?.trim();
 
 export const API_ORIGIN = rawApiOrigin || DEFAULT_API_ORIGIN;
-export const API_URL = `${API_ORIGIN}/api`;
+export const API_BASE_PATH = rawApiBasePath || DEFAULT_API_BASE_PATH;
+export const APP_BASE_PATH = getAppMountPathFromApiBasePath(API_BASE_PATH);
+export const API_URL = `${API_ORIGIN}${API_BASE_PATH}`;
 export const WS_ORIGIN =
-  rawWsOrigin || API_ORIGIN.replace(/^http/i, (protocol) => (protocol.toLowerCase() === "https" ? "wss" : "ws"));
+  rawWsOrigin || `${API_ORIGIN}${APP_BASE_PATH || DEFAULT_APP_BASE_PATH}`.replace(/^http/i, (protocol) => (protocol.toLowerCase() === "https" ? "wss" : "ws"));
 
 export function buildApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
@@ -29,8 +67,12 @@ export function buildApiUrl(path: string): string {
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  if (normalizedPath.startsWith("/api/")) {
+  if (normalizedPath === API_BASE_PATH || normalizedPath.startsWith(`${API_BASE_PATH}/`)) {
     return `${API_ORIGIN}${normalizedPath}`;
+  }
+
+  if (normalizedPath.startsWith("/api/")) {
+    return `${API_ORIGIN}${APP_BASE_PATH}${normalizedPath}`;
   }
 
   return `${API_URL}${normalizedPath}`;

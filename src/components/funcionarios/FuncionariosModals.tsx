@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowRightLeft, Briefcase, CalendarOff, CheckCircle2, GraduationCap, Search, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import type React from "react";
 import type { Funcionario } from "../../context/OfficialsContextDefs";
-import type { DismissReason } from "../../lib/dismissReasons";
+import { isPartialCommissionSelection, type DismissReason } from "../../lib/dismissReasons";
 import { Modal } from "../ui/Modal";
 import { Toast, type ToastType } from "../ui/Toast";
 
@@ -19,6 +19,8 @@ interface FuncionariosModalsProps {
   setDismissReasonId: (value: number | null) => void;
   dismissSuboptionId: number | null;
   setDismissSuboptionId: (value: number | null) => void;
+  dismissPartialHours: string;
+  setDismissPartialHours: (value: string) => void;
   setShowConfirmHardDelete: (value: boolean) => void;
   setDismissError: (value: string) => void;
   dismissError: string;
@@ -53,6 +55,8 @@ export function FuncionariosModals({
   setDismissReasonId,
   dismissSuboptionId,
   setDismissSuboptionId,
+  dismissPartialHours,
+  setDismissPartialHours,
   setShowConfirmHardDelete,
   setDismissError,
   dismissError,
@@ -73,6 +77,7 @@ export function FuncionariosModals({
   setToastOpen,
 }: FuncionariosModalsProps) {
   const selectedDismissSuboption = selectedDismissReason?.suboptions.find((suboption) => suboption.id === dismissSuboptionId) ?? null;
+  const requiresPartialHours = isPartialCommissionSelection(selectedDismissReason, dismissSuboptionId);
 
   const getReasonIcon = (reason: DismissReason) => {
     if (reason.action_type === "hide") return Trash2;
@@ -159,12 +164,13 @@ export function FuncionariosModals({
                 return (
                 <div
                   key={item.id}
-                  onClick={() => {
-                    setDismissReasonId(item.id);
-                    setDismissSuboptionId(null);
-                    setShowConfirmHardDelete(false);
-                    setDismissError("");
-                  }}
+                    onClick={() => {
+                      setDismissReasonId(item.id);
+                      setDismissSuboptionId(null);
+                      setDismissPartialHours("");
+                      setShowConfirmHardDelete(false);
+                      setDismissError("");
+                    }}
                   className={`
                     relative flex flex-col items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 group h-full
                     ${dismissReasonId === item.id
@@ -214,6 +220,9 @@ export function FuncionariosModals({
                     type="button"
                     onClick={() => {
                       setDismissSuboptionId(suboption.id);
+                      if (suboption.name.trim().toLowerCase() !== "parcial") {
+                        setDismissPartialHours("");
+                      }
                       setDismissError("");
                       setShowConfirmHardDelete(false);
                     }}
@@ -224,6 +233,27 @@ export function FuncionariosModals({
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {requiresPartialHours && (
+            <div className="space-y-2">
+              <label htmlFor="dismiss-partial-hours" className="block text-sm font-semibold text-gray-900 dark:text-white">
+                Horas de comisión parcial <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="dismiss-partial-hours"
+                value={dismissPartialHours}
+                onChange={(e) => {
+                  setDismissPartialHours(e.target.value.replace(/\D/g, ""));
+                  setDismissError("");
+                }}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="Ingrese horas"
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/30 px-4 py-3 text-sm text-gray-900 dark:text-white outline-none transition focus:ring-2 focus:ring-primary/20"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">Solo se permiten números enteros mayores a 0.</p>
             </div>
           )}
 
@@ -261,10 +291,10 @@ export function FuncionariosModals({
             </button>
             <button
               onClick={handleConfirmDismiss}
-              disabled={isProcessingDismiss || !dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId)}
+              disabled={isProcessingDismiss || !dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId) || (requiresPartialHours && !dismissPartialHours.trim())}
               className={`
                 px-6 py-2.5 text-white rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center gap-2 transform active:scale-95
-                ${!dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId)
+                ${!dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId) || (requiresPartialHours && !dismissPartialHours.trim())
                   ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
                   : showConfirmHardDelete
                     ? "bg-red-600 hover:bg-red-700 hover:shadow-red-200"

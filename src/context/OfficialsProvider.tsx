@@ -1,7 +1,7 @@
 import React, { useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { usePeriods } from './PeriodsContext';
-import { fetchWithAuth, buildApiUrl } from '../lib/api';
+import { fetchWithAuth, buildApiUrl, parseErrorDetail } from '../lib/api';
 import { OfficialsContext, Funcionario, Group } from './OfficialsContextDefs';
 import { buildProgrammingGroups } from '../lib/programmingGroups';
 import { useSupervisorScope } from './SupervisorScopeContext';
@@ -21,6 +21,7 @@ interface RawFuncionario {
   lunch_time_minutes?: number;
   status?: string;
   inactive_reason?: string | null;
+  active_status_label?: string | null;
   holiday_days?: number;
   administrative_days?: number;
   congress_days?: number;
@@ -75,6 +76,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     lunchTime: `${item.lunch_time_minutes || 0} min`,
     status: item.status || "activo", // Added status
     inactiveReason: item.inactive_reason || undefined,
+    activeStatusLabel: item.active_status_label || undefined,
     
     holidayDays: item.holiday_days || 0,
     administrativeDays: item.administrative_days || 0,
@@ -213,7 +215,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const removeOfficial = async (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string }) => {
+  const removeOfficial = async (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string; partialHours?: number }) => {
     if (!user) return;
     try {
       if (reason) {
@@ -224,6 +226,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
               reason: reason.reason,
               suboption_id: reason.suboptionId,
               suboption: reason.suboption,
+              partial_hours: reason.partialHours,
             };
 
         const response = await fetchWithAuth(buildApiUrl(`/funcionarios/${id}/dismiss`), {
@@ -235,12 +238,19 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
         });
         
         if (response.ok) {
-            const result = await response.json();
-            if (result.action === "Hide") {
-                 setOfficials(prev => prev.filter(o => o.id !== id));
-             } else {
-                 setOfficials(prev => prev.map(o => o.id === id ? { ...o, status: 'inactivo', inactiveReason: result.reason } : o));
-             }
+             const result = await response.json();
+             if (result.action === "Hide") {
+                  setOfficials(prev => prev.filter(o => o.id !== id));
+              } else {
+                  setOfficials(prev => prev.map(o => o.id === id ? {
+                    ...o,
+                    status: result.status || 'inactivo',
+                    inactiveReason: result.status === 'inactivo' ? result.reason : undefined,
+                    activeStatusLabel: result.active_status_label || undefined,
+                  } : o));
+              }
+        } else {
+            throw new Error(await parseErrorDetail(response, "No se pudo procesar la baja del funcionario."));
         }
       } else {
         // Fallback or just unbind logic if needed (though UI should drive this)
@@ -254,6 +264,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error("Error deactivating official:", error);
+      throw error;
     }
   };
 
@@ -268,10 +279,30 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
         });
         
         if (response.ok) {
-             updateOfficialLocally(id, { status: 'activo' });
+             updateOfficialLocally(id, { status: 'activo', inactiveReason: undefined, activeStatusLabel: undefined });
         }
     } catch (error) {
         console.error("Error activating official:", error);
+    }
+  }, [user, updateOfficialLocally]);
+
+  const clearPartialCommission = useCallback(async (id: number) => {
+    if (!user) return;
+    try {
+      const response = await fetchWithAuth(buildApiUrl(`/funcionarios/${id}/activate`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ clear_partial_commission: true })
+      });
+
+      if (response.ok) {
+        updateOfficialLocally(id, { status: 'activo', inactiveReason: undefined, activeStatusLabel: undefined });
+      }
+    } catch (error) {
+      console.error("Error clearing partial commission:", error);
+      throw error;
     }
   }, [user, updateOfficialLocally]);
 
@@ -356,7 +387,8 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       officials, 
       addOfficial, 
       removeOfficial,
-      activateOfficial, 
+      activateOfficial,
+      clearPartialCommission,
       updateOfficialLocally,
       searchOfficials,
       hrDatabase: officials, 

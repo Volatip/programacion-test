@@ -9,7 +9,8 @@ import { FuncionariosTable } from "../components/funcionarios/FuncionariosTable"
 import { FuncionariosToolbar } from "../components/funcionarios/FuncionariosToolbar";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { useAuth } from "../context/AuthContext";
-import { dismissReasonsApi, type DismissReason } from "../lib/dismissReasons";
+import { dismissReasonsApi, isPartialCommissionSelection, type DismissReason } from "../lib/dismissReasons";
+import { validatePartialCommissionBaseForOfficial } from "../lib/partialCommissionValidation";
 import { isSupervisorRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
@@ -23,7 +24,7 @@ const normalizeRutInput = (value: string) => {
 export function Funcionarios() {
   const { user } = useAuth();
   const { isSupervisor, isScopeReady } = useSupervisorScope();
-  const { officials, addOfficial, removeOfficial, activateOfficial, searchOfficials } = useOfficials();
+  const { officials, addOfficial, removeOfficial, activateOfficial, clearPartialCommission, searchOfficials } = useOfficials();
   const { isReadOnly } = usePeriods();
   const canManageOfficials = !isSupervisorRole(user?.role);
   const isReadOnlyView = isReadOnly || !canManageOfficials;
@@ -53,6 +54,7 @@ export function Funcionarios() {
   const [dismissReasons, setDismissReasons] = useState<DismissReason[]>([]);
   const [dismissReasonId, setDismissReasonId] = useState<number | null>(null);
   const [dismissSuboptionId, setDismissSuboptionId] = useState<number | null>(null);
+  const [dismissPartialHours, setDismissPartialHours] = useState("");
   const [dismissError, setDismissError] = useState("");
   const [isProcessingDismiss, setIsProcessingDismiss] = useState(false);
   const [showConfirmHardDelete, setShowConfirmHardDelete] = useState(false);
@@ -122,7 +124,9 @@ export function Funcionarios() {
 
   const selectedDismissReason = dismissReasons.find((reason) => reason.id === dismissReasonId) ?? null;
   const selectedDismissSuboption = selectedDismissReason?.suboptions.find((suboption) => suboption.id === dismissSuboptionId) ?? null;
+  const selectedOfficial = officials.find((official) => official.id === selectedOfficialId) ?? null;
   const requiresSuboption = Boolean(selectedDismissReason && selectedDismissReason.suboptions.length > 0);
+  const requiresPartialHours = isPartialCommissionSelection(selectedDismissReason, dismissSuboptionId);
   const isHideReason = selectedDismissReason?.action_type === "hide";
 
   const handleConfirmActivate = async () => {
@@ -146,11 +150,22 @@ export function Funcionarios() {
     setIsActivateModalOpen(true);
   };
 
+  const handleClearPartialCommission = async (id: number) => {
+    try {
+      await clearPartialCommission(id);
+      showToast("Comisión parcial eliminada correctamente", "success");
+    } catch (error) {
+      console.error("Error clearing partial commission:", error);
+      showToast("Error al quitar la comisión parcial", "error");
+    }
+  };
+
   const handleInitiateDelete = (id: number) => {
     setSelectedOfficialId(id);
     setIsDismissModalOpen(true);
     setDismissReasonId(null);
     setDismissSuboptionId(null);
+    setDismissPartialHours("");
     setDismissError("");
     setShowConfirmHardDelete(false);
   };
@@ -166,6 +181,19 @@ export function Funcionarios() {
         return;
     }
 
+    if (requiresPartialHours && !dismissPartialHours.trim()) {
+        setDismissError("Debe ingresar la cantidad de horas para la Comisión de Servicio Parcial.");
+        return;
+    }
+
+    if (requiresPartialHours) {
+        const baseProgrammingError = validatePartialCommissionBaseForOfficial(selectedOfficial);
+        if (baseProgrammingError) {
+          setDismissError(baseProgrammingError);
+          return;
+        }
+    }
+
     if (isHideReason && !showConfirmHardDelete) {
         setShowConfirmHardDelete(true);
         return;
@@ -176,12 +204,13 @@ export function Funcionarios() {
         await removeOfficial(selectedOfficialId, {
           reasonId: selectedDismissReason.id,
           suboptionId: selectedDismissSuboption?.id,
+          partialHours: dismissPartialHours.trim() ? Number(dismissPartialHours) : undefined,
         });
         setIsDismissModalOpen(false);
         showToast(isHideReason ? "Funcionario eliminado correctamente" : "Funcionario dado de baja correctamente", "success");
     } catch (error) {
         console.error("Error dismissing:", error);
-        setDismissError("Error al procesar la solicitud.");
+        setDismissError(error instanceof Error ? error.message : "Error al procesar la solicitud.");
     } finally {
         setIsProcessingDismiss(false);
     }
@@ -313,6 +342,7 @@ export function Funcionarios() {
                canManageOfficials={canManageOfficials}
               getContractHoursDisplay={getContractHoursDisplay}
               onActivate={handleInitiateActivate}
+              onClearPartialCommission={handleClearPartialCommission}
               onDelete={handleInitiateDelete}
             />
 
@@ -345,6 +375,8 @@ export function Funcionarios() {
           setDismissReasonId={setDismissReasonId}
           dismissSuboptionId={dismissSuboptionId}
           setDismissSuboptionId={setDismissSuboptionId}
+          dismissPartialHours={dismissPartialHours}
+          setDismissPartialHours={setDismissPartialHours}
           setShowConfirmHardDelete={setShowConfirmHardDelete}
           setDismissError={setDismissError}
           dismissError={dismissError}

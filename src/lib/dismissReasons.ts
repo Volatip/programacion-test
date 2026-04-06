@@ -10,6 +10,18 @@ export interface DismissReasonSuboption {
   sort_order: number;
 }
 
+export function isPartialCommissionSelection(reason?: DismissReason | null, suboptionId?: number | null): boolean {
+  if (!reason || suboptionId == null) {
+    return false;
+  }
+
+  const normalizedReason = reason.name.trim().toLowerCase();
+  const suboption = reason.suboptions.find((item) => item.id === suboptionId) ?? null;
+  const normalizedSuboption = suboption?.name.trim().toLowerCase() ?? "";
+
+  return (normalizedReason === "comisión de servicio" || normalizedReason === "comision de servicio") && normalizedSuboption === "parcial";
+}
+
 export interface DismissReason {
   id: number;
   name: string;

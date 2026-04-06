@@ -7,6 +7,8 @@ import logging
 import bleach
 
 from .. import models, schemas, database, auth
+from ..commission_service import clear_partial_commission_programming, ensure_partial_commission_base_fields, ensure_partial_commission_hours, is_partial_commission_selection, merge_partial_observation, upsert_partial_commission_item
+from ..dismiss_reasons import format_dismiss_reason_label
 from ..permissions import PermissionChecker
 from ..audit import AuditLogger
 from ..query_bounds import normalize_limit, normalize_skip
@@ -94,8 +96,10 @@ def validate_programming_rules(db: Session, funcionario_id: int, data: dict):
 
     # 0. Check for Exempt Status (Renuncia/Cambio de servicio/Inactivo)
     # If status is one of these, we skip most mandatory field checks
-    assigned_status = data.get("assigned_status")
-    is_exempt = assigned_status in ["Renuncia", "Cambio de servicio", "Inactivo", "Comisión de Servicio", "Permiso sin Goce", "Comisión de Estudio"]
+    assigned_status = (data.get("assigned_status") or "").strip()
+    is_exempt = assigned_status in {"Inactivo", "inactivo"} or (
+        bool(assigned_status) and assigned_status not in {"Activo", "activo"}
+    )
 
     # Assigned Status is ALWAYS required (must be present and not empty string/None if key exists)
     if "assigned_status" in data and not data["assigned_status"]:
@@ -229,6 +233,109 @@ def validate_hours_balance(db: Session, funcionario_id: int, items_data: List[di
             detail=f"No se puede guardar: Las horas programadas exceden las disponibles. Disponibles: {available:.1f} hrs"
         )
 
+
+def resolve_programming_dismiss_context(
+    db: Session,
+    *,
+    dismiss_reason_id: int | None,
+    dismiss_suboption_id: int | None,
+    dismiss_partial_hours: int | None,
+) -> tuple[models.DismissReason | None, models.DismissReasonSuboption | None, int | None]:
+    reason = None
+    suboption = None
+
+    if dismiss_reason_id is not None:
+        reason = db.query(models.DismissReason).filter(models.DismissReason.id == dismiss_reason_id).first()
+        if reason is None:
+            raise HTTPException(status_code=400, detail="Motivo de baja inválido para la programación.")
+
+    if dismiss_suboption_id is not None:
+        suboption = db.query(models.DismissReasonSuboption).filter(models.DismissReasonSuboption.id == dismiss_suboption_id).first()
+        if suboption is None:
+            raise HTTPException(status_code=400, detail="Subopción de baja inválida para la programación.")
+        if reason is not None and suboption.reason_id != reason.id:
+            raise HTTPException(status_code=400, detail="La subopción no corresponde al motivo de baja seleccionado.")
+        if reason is None:
+            reason = suboption.reason
+
+    partial_hours = ensure_partial_commission_hours(reason, suboption, dismiss_partial_hours)
+    return reason, suboption, partial_hours
+
+
+def apply_programming_dismiss_metadata(
+    db: Session,
+    *,
+    programming: models.Programming,
+    dismiss_reason_id: int | None,
+    dismiss_suboption_id: int | None,
+    dismiss_partial_hours: int | None,
+) -> None:
+    reason, suboption, partial_hours = resolve_programming_dismiss_context(
+        db,
+        dismiss_reason_id=dismiss_reason_id,
+        dismiss_suboption_id=dismiss_suboption_id,
+        dismiss_partial_hours=dismiss_partial_hours,
+    )
+
+    if partial_hours is not None and reason is not None and suboption is not None:
+        programming.dismiss_reason_id = reason.id
+        programming.dismiss_suboption_id = suboption.id
+        programming.dismiss_partial_hours = partial_hours
+        programming.assigned_status = format_dismiss_reason_label(reason.name, suboption.name)
+        programming.observation = merge_partial_observation(programming.observation, partial_hours)
+        upsert_partial_commission_item(db, programming=programming, hours=partial_hours)
+        return
+
+    if programming.dismiss_partial_hours is not None and not is_partial_commission_selection(reason, suboption):
+        clear_partial_commission_programming(programming)
+
+
+def build_items_for_hours_validation(
+    db: Session,
+    *,
+    items_data: List[dict],
+    dismiss_reason_id: int | None,
+    dismiss_suboption_id: int | None,
+    dismiss_partial_hours: int | None,
+) -> List[dict]:
+    _, _, partial_hours = resolve_programming_dismiss_context(
+        db,
+        dismiss_reason_id=dismiss_reason_id,
+        dismiss_suboption_id=dismiss_suboption_id,
+        dismiss_partial_hours=dismiss_partial_hours,
+    )
+
+    validation_items = list(items_data)
+    if partial_hours is not None:
+        validation_items.append({
+            "activity_name": "Otras Actividades No Clínicas",
+            "assigned_hours": float(partial_hours),
+            "performance": 0.0,
+        })
+    return validation_items
+
+
+def validate_partial_commission_base_programming(
+    db: Session,
+    *,
+    dismiss_reason_id: int | None,
+    dismiss_suboption_id: int | None,
+    dismiss_partial_hours: int | None,
+    global_specialty: str | None,
+    selected_performance_unit: str | None,
+) -> None:
+    _, _, partial_hours = resolve_programming_dismiss_context(
+        db,
+        dismiss_reason_id=dismiss_reason_id,
+        dismiss_suboption_id=dismiss_suboption_id,
+        dismiss_partial_hours=dismiss_partial_hours,
+    )
+
+    if partial_hours is None:
+        return
+
+    ensure_partial_commission_base_fields(global_specialty, selected_performance_unit)
+
 @router.post("", response_model=schemas.ProgrammingResponse)
 def create_programming(
     programming: schemas.ProgrammingCreate = Body(..., embed=True), 
@@ -274,6 +381,24 @@ def create_programming(
         update_data = programming.dict(exclude={"funcionario_id", "period_id"})
         update_data.pop("version", None)
         items_data = update_data.pop("items", [])
+        dismiss_reason_id = update_data.get("dismiss_reason_id", existing.dismiss_reason_id)
+        dismiss_suboption_id = update_data.get("dismiss_suboption_id", existing.dismiss_suboption_id)
+        dismiss_partial_hours = update_data.get("dismiss_partial_hours", existing.dismiss_partial_hours)
+        validate_partial_commission_base_programming(
+            db,
+            dismiss_reason_id=dismiss_reason_id,
+            dismiss_suboption_id=dismiss_suboption_id,
+            dismiss_partial_hours=dismiss_partial_hours,
+            global_specialty=update_data.get("global_specialty", existing.global_specialty),
+            selected_performance_unit=update_data.get("selected_performance_unit", existing.selected_performance_unit),
+        )
+        validation_items = build_items_for_hours_validation(
+            db,
+            items_data=items_data,
+            dismiss_reason_id=dismiss_reason_id,
+            dismiss_suboption_id=dismiss_suboption_id,
+            dismiss_partial_hours=dismiss_partial_hours,
+        )
         
         # Validate Rules (pass existing funcionario_id)
         # Note: update_data might not contain all fields if exclude_unset=True was used and fields weren't sent.
@@ -292,7 +417,7 @@ def create_programming(
         # Actually, `items_data` here is the NEW list of items that will replace the old ones (Full Replacement).
         # So we can validate against `items_data`.
         if items_data is not None:
-             validate_hours_balance(db, existing.funcionario_id, items_data, update_data.get("time_unit", existing.time_unit))
+             validate_hours_balance(db, existing.funcionario_id, validation_items, update_data.get("time_unit", existing.time_unit))
         
         for key, value in update_data.items():
             if key != "items":
@@ -311,7 +436,17 @@ def create_programming(
             for item_data in items_data:
                 db_item = models.ProgrammingItem(**item_data, programming_id=existing.id)
                 db.add(db_item)
-        
+
+        db.flush()
+        db.refresh(existing, attribute_names=['items'])
+        apply_programming_dismiss_metadata(
+            db,
+            programming=existing,
+            dismiss_reason_id=dismiss_reason_id,
+            dismiss_suboption_id=dismiss_suboption_id,
+            dismiss_partial_hours=dismiss_partial_hours,
+        )
+
         db.commit()
         db.refresh(existing)
         # Force reload items to ensure they are returned
@@ -333,6 +468,21 @@ def create_programming(
         programming_data = programming.dict()
         items_data = programming_data.pop("items", [])
         programming_data["version"] = 1
+        validate_partial_commission_base_programming(
+            db,
+            dismiss_reason_id=programming_data.get("dismiss_reason_id"),
+            dismiss_suboption_id=programming_data.get("dismiss_suboption_id"),
+            dismiss_partial_hours=programming_data.get("dismiss_partial_hours"),
+            global_specialty=programming_data.get("global_specialty"),
+            selected_performance_unit=programming_data.get("selected_performance_unit"),
+        )
+        validation_items = build_items_for_hours_validation(
+            db,
+            items_data=items_data,
+            dismiss_reason_id=programming_data.get("dismiss_reason_id"),
+            dismiss_suboption_id=programming_data.get("dismiss_suboption_id"),
+            dismiss_partial_hours=programming_data.get("dismiss_partial_hours"),
+        )
         logger.debug("Creating programming with item_count=%s", len(items_data))
         
         # Validate Rules
@@ -342,21 +492,31 @@ def create_programming(
         validate_items(items_data, is_medical=is_medical)
         
         # Validate Hours Balance
-        validate_hours_balance(db, programming.funcionario_id, items_data, programming_data.get("time_unit", "hours"))
+        validate_hours_balance(db, programming.funcionario_id, validation_items, programming_data.get("time_unit", "hours"))
         
         db_programming = models.Programming(**programming_data)
         db_programming.created_by_id = user_id
         db_programming.updated_by_id = user_id
         
         db.add(db_programming)
-        db.commit()
+        db.flush()
         db.refresh(db_programming)
         
         # Create items
         for item_data in items_data:
             db_item = models.ProgrammingItem(**item_data, programming_id=db_programming.id)
             db.add(db_item)
-        
+
+        db.flush()
+        db.refresh(db_programming, attribute_names=['items'])
+        apply_programming_dismiss_metadata(
+            db,
+            programming=db_programming,
+            dismiss_reason_id=programming_data.get("dismiss_reason_id"),
+            dismiss_suboption_id=programming_data.get("dismiss_suboption_id"),
+            dismiss_partial_hours=programming_data.get("dismiss_partial_hours"),
+        )
+
         db.commit()
         db.refresh(db_programming)
         # Force reload items
@@ -490,12 +650,31 @@ def update_programming(
     # Validate Rules (pass existing funcionario_id)
     # Re-fetch items if needed to validate? No, validation is on incoming data.
     validate_programming_rules(db, db_programming.funcionario_id, update_data)
+
+    dismiss_reason_id = update_data.get("dismiss_reason_id", db_programming.dismiss_reason_id)
+    dismiss_suboption_id = update_data.get("dismiss_suboption_id", db_programming.dismiss_suboption_id)
+    dismiss_partial_hours = update_data.get("dismiss_partial_hours", db_programming.dismiss_partial_hours)
+    validate_partial_commission_base_programming(
+        db,
+        dismiss_reason_id=dismiss_reason_id,
+        dismiss_suboption_id=dismiss_suboption_id,
+        dismiss_partial_hours=dismiss_partial_hours,
+        global_specialty=update_data.get("global_specialty", db_programming.global_specialty),
+        selected_performance_unit=update_data.get("selected_performance_unit", db_programming.selected_performance_unit),
+    )
+    validation_items = build_items_for_hours_validation(
+        db,
+        items_data=items_data or [],
+        dismiss_reason_id=dismiss_reason_id,
+        dismiss_suboption_id=dismiss_suboption_id,
+        dismiss_partial_hours=dismiss_partial_hours,
+    )
     
     # Validate Items if provided
     if items_data is not None:
         validate_items(items_data, is_medical=is_medical)
         # Validate Hours Balance
-        validate_hours_balance(db, db_programming.funcionario_id, items_data, update_data.get("time_unit", db_programming.time_unit))
+        validate_hours_balance(db, db_programming.funcionario_id, validation_items, update_data.get("time_unit", db_programming.time_unit))
     
     for key, value in update_data.items():
         setattr(db_programming, key, value)
@@ -512,7 +691,17 @@ def update_programming(
         for item_data in items_data:
             db_item = models.ProgrammingItem(**item_data, programming_id=programming_id)
             db.add(db_item)
-    
+
+    db.flush()
+    db.refresh(db_programming, attribute_names=['items'])
+    apply_programming_dismiss_metadata(
+        db,
+        programming=db_programming,
+        dismiss_reason_id=dismiss_reason_id,
+        dismiss_suboption_id=dismiss_suboption_id,
+        dismiss_partial_hours=dismiss_partial_hours,
+    )
+
     db.commit()
     db.refresh(db_programming)
     db.refresh(db_programming, attribute_names=['items'])

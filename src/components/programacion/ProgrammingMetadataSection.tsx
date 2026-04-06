@@ -1,5 +1,6 @@
 import { AlignLeft } from "lucide-react";
 import type { Group } from "../../context/OfficialsContextDefs";
+import { isPartialCommissionSelection, type DismissReason } from "../../lib/dismissReasons";
 
 interface ProgrammingMetadataSectionProps {
   assignedGroupId: number | "none" | "";
@@ -9,6 +10,13 @@ interface ProgrammingMetadataSectionProps {
   pendingStatus: string;
   currentOfficialStatus: string;
   handleStatusChange: (newValue: string) => void;
+  dismissReasons: DismissReason[];
+  selectedDismissReasonId: number | null;
+  selectedDismissSuboptionId: number | null;
+  handleDismissSuboptionChange: (suboptionId: number | null) => void;
+  showClearPartialCommissionAction: boolean;
+  dismissPartialHours: string;
+  setDismissPartialHours: (value: string) => void;
   observations: string;
   setObservations: (value: string) => void;
   isReadOnly: boolean;
@@ -22,13 +30,23 @@ export function ProgrammingMetadataSection({
   pendingStatus,
   currentOfficialStatus,
   handleStatusChange,
+  dismissReasons,
+  selectedDismissReasonId,
+  selectedDismissSuboptionId,
+  handleDismissSuboptionChange,
+  showClearPartialCommissionAction,
+  dismissPartialHours,
+  setDismissPartialHours,
   observations,
   setObservations,
   isReadOnly,
 }: ProgrammingMetadataSectionProps) {
   const statusOptions = currentOfficialStatus === "activo"
-    ? ["Activo", "Renuncia", "Cambio de servicio", "Comisión de Servicio", "Permiso sin Goce", "Comisión de Estudio"]
-    : ["Inactivo", "Activo"];
+    ? [{ label: "Activo", value: "Activo" }, ...dismissReasons.map((reason) => ({ label: reason.name, value: reason.name }))]
+    : [{ label: "Inactivo", value: "Inactivo" }, { label: "Activo", value: "Activo" }];
+
+  const selectedDismissReason = dismissReasons.find((reason) => reason.id === selectedDismissReasonId) ?? null;
+  const requiresPartialHours = isPartialCommissionSelection(selectedDismissReason, selectedDismissSuboptionId);
 
   return (
     <div className="pt-4 border-t border-gray-50 dark:border-gray-700 space-y-4">
@@ -75,7 +93,7 @@ export function ProgrammingMetadataSection({
               </span>
             </label>
             <select
-              value={pendingStatus === "activo" ? "Activo" : pendingStatus === "inactivo" ? "Inactivo" : pendingStatus}
+              value={pendingStatus === "activo" ? "Activo" : pendingStatus === "inactivo" ? "Inactivo" : selectedDismissReason?.name ?? pendingStatus}
               onChange={(e) => handleStatusChange(e.target.value)}
               disabled={isReadOnly}
               className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 dark:text-white"
@@ -84,12 +102,70 @@ export function ProgrammingMetadataSection({
                 Seleccionar Estado
               </option>
               {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
+                <option key={status.value} value={status.value}>
+                  {status.label}
                 </option>
               ))}
             </select>
           </div>
+
+          {currentOfficialStatus === "activo" && selectedDismissReason && selectedDismissReason.suboptions.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span>
+                  Subopción de baja
+                  <span className="text-red-500 text-xs ml-0.5">*</span>
+                </span>
+              </label>
+              <select
+                value={selectedDismissSuboptionId ?? ""}
+                onChange={(e) => handleDismissSuboptionChange(e.target.value ? Number(e.target.value) : null)}
+                disabled={isReadOnly}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 dark:text-white"
+              >
+                <option value="" disabled>
+                  Seleccionar subopción
+                </option>
+                {selectedDismissReason.suboptions.map((suboption) => (
+                  <option key={suboption.id} value={suboption.id}>
+                    {suboption.name}
+                  </option>
+                ))}
+              </select>
+              {showClearPartialCommissionAction && (
+                <button
+                  type="button"
+                  onClick={() => handleStatusChange("Activo")}
+                  disabled={isReadOnly}
+                  className="mt-2 inline-flex items-center rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-300"
+                >
+                  Sin comisión
+                </button>
+              )}
+            </div>
+          )}
+
+          {currentOfficialStatus === "activo" && requiresPartialHours && (
+            <div>
+              <label htmlFor="programming-dismiss-partial-hours" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <span>
+                  Horas de comisión parcial
+                  <span className="text-red-500 text-xs ml-0.5">*</span>
+                </span>
+              </label>
+              <input
+                id="programming-dismiss-partial-hours"
+                value={dismissPartialHours}
+                onChange={(e) => setDismissPartialHours(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="Ingrese horas"
+                disabled={isReadOnly}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 dark:text-white"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Solo se permiten números enteros mayores a 0.</p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -212,6 +212,9 @@ class Programming(Base):
     selected_process = Column(String, nullable=True)
     selected_performance_unit = Column(String, nullable=True)
     time_unit = Column(String, default="hours") # hours, minutes
+    dismiss_reason_id = Column(Integer, nullable=True, index=True)
+    dismiss_suboption_id = Column(Integer, nullable=True, index=True)
+    dismiss_partial_hours = Column(Integer, nullable=True)
 
     # Audit
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -276,6 +279,7 @@ class UserHiddenOfficial(Base):
     suboption = Column(String, nullable=True)
     dismiss_reason_id = Column(Integer, nullable=True, index=True)
     dismiss_suboption_id = Column(Integer, nullable=True, index=True)
+    dismiss_partial_hours = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
@@ -297,6 +301,7 @@ class OfficialAudit(Base):
     dismiss_reason_id = Column(Integer, nullable=True, index=True)
     dismiss_suboption_id = Column(Integer, nullable=True, index=True)
     reason_category = Column(String, nullable=True)
+    dismiss_partial_hours = Column(Integer, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

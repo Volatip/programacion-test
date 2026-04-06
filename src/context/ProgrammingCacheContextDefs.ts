@@ -22,6 +22,9 @@ export interface ProgrammingData {
   selected_process: string;
   selected_performance_unit: string;
   time_unit: string;
+  dismiss_reason_id?: number | null;
+  dismiss_suboption_id?: number | null;
+  dismiss_partial_hours?: number | null;
   items: ProgrammingItemData[];
   updated_at: string;
   created_by_name?: string;

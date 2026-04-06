@@ -25,6 +25,10 @@ interface BuildProgrammingPayloadParams {
   observations: string;
   assignedGroupId: number | "none" | "";
   pendingStatus: string;
+  dismissReasonId?: number | null;
+  dismissSuboptionId?: number | null;
+  dismissPartialHours?: string;
+  clearPartialCommission?: boolean;
   prais: "Si" | "No" | "";
   globalSpecialty: string;
   selectedProcess: string;
@@ -41,6 +45,10 @@ export function buildProgrammingPayload({
   observations,
   assignedGroupId,
   pendingStatus,
+  dismissReasonId,
+  dismissSuboptionId,
+  dismissPartialHours,
+  clearPartialCommission,
   prais,
   globalSpecialty,
   selectedProcess,
@@ -51,8 +59,7 @@ export function buildProgrammingPayload({
 }: BuildProgrammingPayloadParams) {
   const validEntries = activityEntries.filter((entry) => entry.assignedHours && parseFloat(entry.assignedHours) > 0);
 
-  return {
-    programming: {
+  const programmingPayload: Record<string, unknown> = {
       funcionario_id: funcionarioId,
       period_id: periodId,
       version: version ?? 1,
@@ -75,7 +82,25 @@ export function buildProgrammingPayload({
           performance: parseFloat(entry.performance.replace(",", ".")) || 0,
         };
       }),
-    },
+  };
+
+  if (clearPartialCommission) {
+    programmingPayload.dismiss_reason_id = null;
+    programmingPayload.dismiss_suboption_id = null;
+    programmingPayload.dismiss_partial_hours = null;
+  } else if (dismissReasonId != null) {
+    programmingPayload.dismiss_reason_id = dismissReasonId;
+    if (dismissSuboptionId != null) {
+      programmingPayload.dismiss_suboption_id = dismissSuboptionId;
+    }
+
+    if ((dismissPartialHours ?? "").trim()) {
+      programmingPayload.dismiss_partial_hours = Number(dismissPartialHours);
+    }
+  }
+
+  return {
+    programming: programmingPayload,
   };
 }
 

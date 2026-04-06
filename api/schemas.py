@@ -116,6 +116,7 @@ class DismissSelectionRequest(BaseModel):
     reason: Optional[str] = None
     suboption_id: Optional[int] = None
     suboption: Optional[str] = None
+    partial_hours: Optional[int] = Field(default=None, ge=1)
     user_id: Optional[int] = None
 
 class SpecialtyStatResponse(BaseModel):
@@ -324,6 +325,7 @@ class FuncionarioConsolidated(BaseModel):
     lunch_time_minutes: int
     status: str
     inactive_reason: Optional[str] = None
+    active_status_label: Optional[str] = None
     observations: str
     
     holiday_days: int
@@ -411,6 +413,9 @@ class ProgrammingBase(BaseModel):
     selected_process: Optional[str] = None
     selected_performance_unit: Optional[str] = None
     time_unit: str = "hours"
+    dismiss_reason_id: Optional[int] = None
+    dismiss_suboption_id: Optional[int] = None
+    dismiss_partial_hours: Optional[int] = Field(default=None, ge=1)
 
 class ProgrammingCreate(ProgrammingBase):
     items: List[ProgrammingItemCreate] = []
@@ -426,6 +431,9 @@ class ProgrammingUpdate(BaseModel):
     selected_process: Optional[str] = None
     selected_performance_unit: Optional[str] = None
     time_unit: Optional[str] = None
+    dismiss_reason_id: Optional[int] = None
+    dismiss_suboption_id: Optional[int] = None
+    dismiss_partial_hours: Optional[int] = Field(default=None, ge=1)
     items: Optional[List[ProgrammingItemCreate]] = None
 
 class ProgrammingResponse(ProgrammingBase):

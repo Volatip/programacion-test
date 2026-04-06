@@ -7,6 +7,7 @@ import logging
 import pandas as pd
 import io
 from api import models, schemas, database, auth
+from api.commission_service import apply_partial_commission_programming, clear_partial_commission_programming, ensure_partial_commission_base_programming, ensure_partial_commission_hours, is_partial_commission_selection
 from api.dismiss_reasons import HIDE_ACTION, resolve_dismiss_selection, resolve_reason_category
 from api.query_bounds import normalize_limit, normalize_skip
 from api.permissions import PermissionChecker
@@ -471,6 +472,7 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
                 "breastfeeding_time": contract.breastfeeding_time or 0,
                 "status": contract.status, # Added status
                 "inactive_reason": inactive_reasons.get(contract.rut),
+                "active_status_label": None,
                 
                 "is_active_roster": contract.is_active_roster, # Take from first contract
                 "is_scheduled": False,
@@ -488,6 +490,8 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
              grouped_people[key]["programming_id"] = details["id"]
              grouped_people[key]["programming_updated_at"] = details["updated_at"]
              grouped_people[key]["total_scheduled_hours"] = details["scheduled_hours"]
+             if details.get("dismiss_partial_hours") is not None and details.get("assigned_status"):
+                 grouped_people[key]["active_status_label"] = details["assigned_status"]
 
         # Accumulate values
         grouped_people[key]["law_codes"].append(contract.law_code)
@@ -538,6 +542,7 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
             "lunch_time_minutes": person["lunch_minutes"],
             "status": person["status"], # Added status
             "inactive_reason": person["inactive_reason"],
+            "active_status_label": person["active_status_label"],
             "observations": obs_str, # Added observations
             
             "holiday_days": person["holiday_days"],
@@ -566,6 +571,8 @@ def get_programmed_details(db: Session, period_id: int):
         models.Programming.id,
         models.Programming.updated_at,
         models.Programming.time_unit,
+        models.Programming.assigned_status,
+        models.Programming.dismiss_partial_hours,
         func.coalesce(func.sum(models.ProgrammingItem.assigned_hours), 0.0).label("scheduled_total")
     ).outerjoin(
         models.ProgrammingItem,
@@ -576,7 +583,9 @@ def get_programmed_details(db: Session, period_id: int):
         models.Programming.funcionario_id,
         models.Programming.id,
         models.Programming.updated_at,
-        models.Programming.time_unit
+        models.Programming.time_unit,
+        models.Programming.assigned_status,
+        models.Programming.dismiss_partial_hours,
     ).all()
 
     for row in programmed_rows:
@@ -590,7 +599,9 @@ def get_programmed_details(db: Session, period_id: int):
         details[row.funcionario_id] = {
             "id": row.id,
             "updated_at": row.updated_at,
-            "scheduled_hours": total
+            "scheduled_hours": total,
+            "assigned_status": row.assigned_status,
+            "dismiss_partial_hours": row.dismiss_partial_hours,
         }
     return details
 
@@ -1002,6 +1013,8 @@ def dismiss_funcionario(
     PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload_dict.get("user_id")) # Who performed the action
     selection = resolve_dismiss_selection(db, payload_dict)
+    partial_hours = ensure_partial_commission_hours(selection.reason, selection.suboption, payload_dict.get("partial_hours"))
+    keeps_official_active = is_partial_commission_selection(selection.reason, selection.suboption)
     reason_label = selection.display_label
     reason_category = resolve_reason_category(selection.reason.reason_category, reason_label)
         
@@ -1013,18 +1026,19 @@ def dismiss_funcionario(
         
     # Determine Action
     if selection.reason.action_type != HIDE_ACTION:
-        # Soft Delete / Deactivate
-        # Update all contracts with same RUT? 
-        # Usually dismiss applies to the person, so all contracts with that RUT should be updated.
-        if funcionario.rut:
-            contracts = db.query(models.Funcionario).filter(
-                models.Funcionario.rut == funcionario.rut,
-                models.Funcionario.period_id == funcionario.period_id,
-            ).all()
-            for c in contracts:
-                c.status = "inactivo"
-        else:
-            funcionario.status = "inactivo"
+        if not keeps_official_active:
+            # Soft Delete / Deactivate
+            # Update all contracts with same RUT? 
+            # Usually dismiss applies to the person, so all contracts with that RUT should be updated.
+            if funcionario.rut:
+                contracts = db.query(models.Funcionario).filter(
+                    models.Funcionario.rut == funcionario.rut,
+                    models.Funcionario.period_id == funcionario.period_id,
+                ).all()
+                for c in contracts:
+                    c.status = "inactivo"
+            else:
+                funcionario.status = "inactivo"
             
         action = "Dismiss"
         
@@ -1050,6 +1064,7 @@ def dismiss_funcionario(
                     suboption=selection.suboption.name if selection.suboption else None,
                     dismiss_reason_id=selection.reason.id,
                     dismiss_suboption_id=selection.suboption.id if selection.suboption else None,
+                    dismiss_partial_hours=partial_hours,
                 )
                 db.add(hidden)
         
@@ -1092,8 +1107,24 @@ def dismiss_funcionario(
         dismiss_reason_id=selection.reason.id,
         dismiss_suboption_id=selection.suboption.id if selection.suboption else None,
         reason_category=reason_category,
+        dismiss_partial_hours=partial_hours,
     )
     db.add(audit)
+
+    if partial_hours is not None and selection.suboption is not None:
+        existing_programming = db.query(models.Programming).filter(
+            models.Programming.funcionario_id == funcionario.id,
+            models.Programming.period_id == funcionario.period_id,
+        ).first()
+        ensure_partial_commission_base_programming(existing_programming)
+        apply_partial_commission_programming(
+            db,
+            funcionario=funcionario,
+            user_id=user_id,
+            reason=selection.reason,
+            suboption=selection.suboption,
+            partial_hours=partial_hours,
+        )
     
     try:
         db.commit()
@@ -1107,9 +1138,12 @@ def dismiss_funcionario(
     return {
         "message": f"Funcionario processed: {action}",
         "action": action,
+        "status": funcionario.status,
         "reason": reason_label,
         "reason_id": selection.reason.id,
         "suboption_id": selection.suboption.id if selection.suboption else None,
+        "partial_hours": partial_hours,
+        "active_status_label": reason_label if keeps_official_active else None,
     }
 
 @router.post("/{funcionario_id}/activate")
@@ -1120,6 +1154,7 @@ def activate_funcionario(
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
     payload = payload or {}
+    clear_partial_commission = bool(payload.get("clear_partial_commission"))
     PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id")) # Who performed the action
     
@@ -1130,9 +1165,10 @@ def activate_funcionario(
     PermissionChecker.check_can_access_funcionario(current_user, funcionario_id, db)
     
     # Activate
-    # Update all contracts with same RUT
-    # Use transaction for atomicity (Session does this by default on commit)
-    if funcionario.rut:
+    # Update all contracts with same RUT unless we are only clearing a partial commission
+    if clear_partial_commission:
+        funcionario.status = "activo"
+    elif funcionario.rut:
         contracts = db.query(models.Funcionario).filter(
             models.Funcionario.rut == funcionario.rut,
             models.Funcionario.period_id == funcionario.period_id,
@@ -1141,6 +1177,17 @@ def activate_funcionario(
             c.status = "activo"
     else:
         funcionario.status = "activo"
+
+    programming = db.query(models.Programming).filter(
+        models.Programming.funcionario_id == funcionario_id,
+        models.Programming.period_id == funcionario.period_id,
+    ).first()
+    had_partial_commission = programming is not None and programming.dismiss_partial_hours is not None
+    clear_partial_commission_programming(programming)
+    if programming is not None:
+        programming.updated_by_id = user_id
+        if had_partial_commission:
+            programming.version = (programming.version or 0) + 1
         
     # Audit Log
     audit = models.OfficialAudit(
@@ -1149,8 +1196,8 @@ def activate_funcionario(
         rut=funcionario.rut,
         period_id=funcionario.period_id,
         user_id=user_id,
-        action="Activate",
-        reason="Manual Activation"
+        action="Clear Partial Commission" if clear_partial_commission else "Activate",
+        reason="Sin comisión" if clear_partial_commission else "Manual Activation"
     )
     db.add(audit)
     

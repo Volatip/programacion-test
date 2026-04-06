@@ -16,6 +16,7 @@ export interface Funcionario {
   lunchTime: string;
   status: string; // Added status
   inactiveReason?: string;
+  activeStatusLabel?: string;
   // Added fields
   holidayDays: number;
   administrativeDays: number;
@@ -45,8 +46,9 @@ export interface Group {
 export interface OfficialsContextType {
   officials: Funcionario[];
   addOfficial: (official: Funcionario) => Promise<void>;
-  removeOfficial: (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string }) => Promise<void>;
+  removeOfficial: (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string; partialHours?: number }) => Promise<void>;
   activateOfficial: (id: number) => Promise<void>; // Added activate
+  clearPartialCommission: (id: number) => Promise<void>;
   updateOfficialLocally: (id: number, patch: Partial<Funcionario>) => void;
   searchOfficials: (query: string, global?: boolean) => Promise<Funcionario[]>;
   hrDatabase: Funcionario[]; // Kept for compatibility, but might be empty or full list if needed
