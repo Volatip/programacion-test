@@ -14,6 +14,7 @@ import { validatePartialCommissionBaseForOfficial } from "../lib/partialCommissi
 import { isSupervisorRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
+import { useProgrammingCache } from "../context/ProgrammingCacheContext";
 
 // Helper to normalize RUT input for search
 // Removes dots but keeps hyphen and other characters to allow user typing
@@ -24,7 +25,8 @@ const normalizeRutInput = (value: string) => {
 export function Funcionarios() {
   const { user } = useAuth();
   const { isSupervisor, isScopeReady } = useSupervisorScope();
-  const { officials, addOfficial, removeOfficial, activateOfficial, clearPartialCommission, searchOfficials } = useOfficials();
+  const { officials, addOfficial, removeOfficial, activateOfficial, clearPartialCommission, searchOfficials, refreshOfficials } = useOfficials();
+  const { removeCachedProgramming } = useProgrammingCache();
   const { isReadOnly } = usePeriods();
   const canManageOfficials = !isSupervisorRole(user?.role);
   const isReadOnlyView = isReadOnly || !canManageOfficials;
@@ -153,6 +155,8 @@ export function Funcionarios() {
   const handleClearPartialCommission = async (id: number) => {
     try {
       await clearPartialCommission(id);
+      removeCachedProgramming(id);
+      await refreshOfficials();
       showToast("Comisión parcial eliminada correctamente", "success");
     } catch (error) {
       console.error("Error clearing partial commission:", error);
@@ -206,6 +210,12 @@ export function Funcionarios() {
           suboptionId: selectedDismissSuboption?.id,
           partialHours: dismissPartialHours.trim() ? Number(dismissPartialHours) : undefined,
         });
+
+        if (requiresPartialHours) {
+          removeCachedProgramming(selectedOfficialId);
+          await refreshOfficials();
+        }
+
         setIsDismissModalOpen(false);
         showToast(isHideReason ? "Funcionario eliminado correctamente" : "Funcionario dado de baja correctamente", "success");
     } catch (error) {

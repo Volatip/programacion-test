@@ -7,7 +7,7 @@ import logging
 import bleach
 
 from .. import models, schemas, database, auth
-from ..commission_service import clear_partial_commission_programming, ensure_partial_commission_base_fields, ensure_partial_commission_hours, is_partial_commission_selection, merge_partial_observation, upsert_partial_commission_item
+from ..commission_service import clear_partial_commission_programming, ensure_partial_commission_base_fields, ensure_partial_commission_hours, is_partial_commission_selection, merge_partial_observation, requires_performance_unit, upsert_partial_commission_item
 from ..dismiss_reasons import format_dismiss_reason_label
 from ..permissions import PermissionChecker
 from ..audit import AuditLogger
@@ -318,6 +318,7 @@ def build_items_for_hours_validation(
 def validate_partial_commission_base_programming(
     db: Session,
     *,
+    funcionario: models.Funcionario,
     dismiss_reason_id: int | None,
     dismiss_suboption_id: int | None,
     dismiss_partial_hours: int | None,
@@ -334,7 +335,11 @@ def validate_partial_commission_base_programming(
     if partial_hours is None:
         return
 
-    ensure_partial_commission_base_fields(global_specialty, selected_performance_unit)
+    ensure_partial_commission_base_fields(
+        global_specialty,
+        selected_performance_unit,
+        requires_performance_unit_field=requires_performance_unit(funcionario),
+    )
 
 @router.post("", response_model=schemas.ProgrammingResponse)
 def create_programming(
@@ -386,6 +391,7 @@ def create_programming(
         dismiss_partial_hours = update_data.get("dismiss_partial_hours", existing.dismiss_partial_hours)
         validate_partial_commission_base_programming(
             db,
+            funcionario=func,
             dismiss_reason_id=dismiss_reason_id,
             dismiss_suboption_id=dismiss_suboption_id,
             dismiss_partial_hours=dismiss_partial_hours,
@@ -470,6 +476,7 @@ def create_programming(
         programming_data["version"] = 1
         validate_partial_commission_base_programming(
             db,
+            funcionario=func,
             dismiss_reason_id=programming_data.get("dismiss_reason_id"),
             dismiss_suboption_id=programming_data.get("dismiss_suboption_id"),
             dismiss_partial_hours=programming_data.get("dismiss_partial_hours"),
@@ -656,6 +663,7 @@ def update_programming(
     dismiss_partial_hours = update_data.get("dismiss_partial_hours", db_programming.dismiss_partial_hours)
     validate_partial_commission_base_programming(
         db,
+        funcionario=func,
         dismiss_reason_id=dismiss_reason_id,
         dismiss_suboption_id=dismiss_suboption_id,
         dismiss_partial_hours=dismiss_partial_hours,

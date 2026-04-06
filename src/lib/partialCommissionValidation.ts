@@ -1,6 +1,6 @@
 import type { Funcionario } from "../context/OfficialsContextDefs";
 
-export const PARTIAL_COMMISSION_BASE_MESSAGE = "Primero debe registrar la programación base del funcionario con Especialidad Principal y Unidad de Desempeño.";
+export const PARTIAL_COMMISSION_BASE_MESSAGE = "Primero debe registrar una programación base válida del funcionario antes de asignar Comisión de Servicio Parcial.";
 
 export function validatePartialCommissionBaseForOfficial(
   funcionario: Pick<Funcionario, "programmingId"> | null | undefined,

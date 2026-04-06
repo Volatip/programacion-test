@@ -1116,7 +1116,7 @@ def dismiss_funcionario(
             models.Programming.funcionario_id == funcionario.id,
             models.Programming.period_id == funcionario.period_id,
         ).first()
-        ensure_partial_commission_base_programming(existing_programming)
+        ensure_partial_commission_base_programming(existing_programming, funcionario)
         apply_partial_commission_programming(
             db,
             funcionario=funcionario,

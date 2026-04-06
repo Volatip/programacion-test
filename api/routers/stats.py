@@ -11,6 +11,7 @@ from ..models import (
     Programming,
     ProgrammingPeriod,
     User,
+    UserHiddenOfficial,
     UserOfficial,
 )
 from .. import auth
@@ -58,6 +59,27 @@ def get_assigned_ruts(db: Session, user_id: int, period_id: Optional[int] = None
     return [rut for (rut,) in query.distinct().all() if rut]
 
 
+def get_visible_ruts_by_period_subquery(db: Session, user_id: int):
+    return db.query(
+        Funcionario.period_id.label("period_id"),
+        Funcionario.rut.label("rut"),
+    ).join(
+        UserOfficial,
+        UserOfficial.funcionario_id == Funcionario.id,
+    ).outerjoin(
+        UserHiddenOfficial,
+        and_(
+            UserHiddenOfficial.user_id == user_id,
+            UserHiddenOfficial.funcionario_rut == Funcionario.rut,
+            UserHiddenOfficial.period_id == Funcionario.period_id,
+        ),
+    ).filter(
+        UserOfficial.user_id == user_id,
+        Funcionario.rut.isnot(None),
+        UserHiddenOfficial.id.is_(None),
+    ).distinct().subquery()
+
+
 def is_shift_contract_record(law_code: Optional[str], observations: Optional[str]) -> bool:
     if not law_code or "15076" not in law_code:
         return False
@@ -81,15 +103,15 @@ def get_dashboard_stats(
     target_period = get_target_period(db, period_id)
     current_period_id = target_period.id if target_period is not None else None
 
-    assigned_ruts_all_periods: Optional[list[str]] = None
     assigned_ruts_current_period: Optional[list[str]] = None
+    visible_ruts_by_period_subquery = None
     if effective_user_id is not None:
-        assigned_ruts_all_periods = get_assigned_ruts(db, effective_user_id)
         assigned_ruts_current_period = (
             get_assigned_ruts(db, effective_user_id, current_period_id)
             if current_period_id is not None
             else []
         )
+        visible_ruts_by_period_subquery = get_visible_ruts_by_period_subquery(db, effective_user_id)
 
     total_active_officials = 0
     programmed_count = 0
@@ -228,8 +250,14 @@ def get_dashboard_stats(
         Funcionario.period_id.in_(chart_periods_subquery.select()),
     )
 
-    if assigned_ruts_all_periods is not None:
-        chart_query = chart_query.filter(Funcionario.rut.in_(assigned_ruts_all_periods))
+    if visible_ruts_by_period_subquery is not None:
+        chart_query = chart_query.join(
+            visible_ruts_by_period_subquery,
+            and_(
+                visible_ruts_by_period_subquery.c.period_id == Funcionario.period_id,
+                visible_ruts_by_period_subquery.c.rut == Funcionario.rut,
+            ),
+        )
 
     chart_results = chart_query.group_by(
         ProgrammingPeriod.name,

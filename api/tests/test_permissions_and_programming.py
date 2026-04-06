@@ -1033,9 +1033,85 @@ def test_dismiss_funcionario_partial_commission_creates_programming_activity_and
     assert programming.assigned_status == "Comisión de Servicio - Parcial"
     assert programming.observation == "Funcionario con comision de servicio parcial 6 horas"
     assert auto_item.activity_name == "Otras Actividades No Clínicas"
+    assert auto_item.specialty == "Urgencia"
     assert auto_item.assigned_hours == 6.0
     assert audit is not None
     assert audit.dismiss_partial_hours == 6
+
+
+def test_create_programming_updates_partial_commission_item_specialty_when_existing_programming_is_upserted(db_session) -> None:
+    user = make_user(user_id=59, role="user")
+    period = make_period(name="2027-12", month=12, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    db_session.add(models.ActivityType(name="Otras Actividades No Clínicas", period_id=period.id, visible="SI", req_rendimiento="NO"))
+
+    funcionario = models.Funcionario(
+        name="Lorena Ajuste",
+        title="Enfermera",
+        rut="76000009",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+
+    commission_reason = db_session.query(models.DismissReason).filter_by(system_key="comision-servicio").one()
+    partial_suboption = db_session.query(models.DismissReasonSuboption).filter_by(reason_id=commission_reason.id, system_key="parcial").one()
+
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        version=1,
+        status="borrador",
+        assigned_status="Comisión de Servicio - Parcial",
+        global_specialty="Urgencia",
+        dismiss_reason_id=commission_reason.id,
+        dismiss_suboption_id=partial_suboption.id,
+        dismiss_partial_hours=4,
+        prais=False,
+        created_by_id=user.id,
+        updated_by_id=user.id,
+        items=[
+            models.ProgrammingItem(
+                activity_name="Otras Actividades No Clínicas",
+                description="Comisión de Servicio Parcial",
+                specialty=None,
+                assigned_hours=4.0,
+                performance=0.0,
+            )
+        ],
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    response = programming_router.create_programming(
+        programming=schemas.ProgrammingCreate(
+            funcionario_id=funcionario.id,
+            period_id=period.id,
+            assigned_status="Comisión de Servicio - Parcial",
+            prais=False,
+            global_specialty="Cardiología",
+            dismiss_reason_id=commission_reason.id,
+            dismiss_suboption_id=partial_suboption.id,
+            dismiss_partial_hours=6,
+            items=[],
+        ),
+        db=db_session,
+        current_user=user,
+    )
+
+    auto_item = db_session.query(models.ProgrammingItem).filter_by(programming_id=response.id, description="Comisión de Servicio Parcial").one()
+
+    assert response.global_specialty == "Cardiología"
+    assert response.dismiss_partial_hours == 6
+    assert auto_item.specialty == "Cardiología"
+    assert auto_item.assigned_hours == 6.0
 
 
 def test_dismiss_funcionario_partial_commission_requires_valid_base_programming(db_session) -> None:
@@ -1077,7 +1153,7 @@ def test_dismiss_funcionario_partial_commission_requires_valid_base_programming(
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == (
         "No se puede asignar Comisión de Servicio Parcial porque el funcionario no tiene una programación base válida. "
-        "Primero debe registrar la programación base del funcionario con Especialidad Principal y Unidad de Desempeño."
+        "Primero debe registrar la programación base del funcionario."
     )
 
 
@@ -1215,6 +1291,58 @@ def test_create_programming_partial_commission_requires_base_fields(db_session) 
         title="Enfermero",
         rut="76000006",
         dv="K",
+        law_code="19664",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    commission_reason = db_session.query(models.DismissReason).filter_by(system_key="comision-servicio").one()
+    partial_suboption = db_session.query(models.DismissReasonSuboption).filter_by(reason_id=commission_reason.id, system_key="parcial").one()
+
+    with pytest.raises(HTTPException) as exc_info:
+        programming_router.create_programming(
+            programming=schemas.ProgrammingCreate(
+                funcionario_id=funcionario.id,
+                period_id=period.id,
+                assigned_status="Comisión de Servicio - Parcial",
+                prais=False,
+                dismiss_reason_id=commission_reason.id,
+                dismiss_suboption_id=partial_suboption.id,
+                dismiss_partial_hours=6,
+                global_specialty=None,
+                selected_process="Apoyo Clínico",
+                selected_performance_unit=None,
+                items=[],
+            ),
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == (
+        "No se puede asignar Comisión de Servicio Parcial porque el funcionario no tiene una programación base válida. "
+        "Primero debe registrar la programación base del funcionario con Especialidad Principal."
+    )
+
+
+def test_create_programming_partial_commission_requires_performance_unit_when_rule_applies(db_session) -> None:
+    user = make_user(user_id=57, role="user")
+    period = make_period(name="2027-10", month=10, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Paula Guardia",
+        title="Enfermera",
+        rut="76000007",
+        dv="K",
+        law_code="15076",
         period_id=period.id,
         status="activo",
         is_active_roster=True,
@@ -1248,8 +1376,56 @@ def test_create_programming_partial_commission_requires_base_fields(db_session) 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == (
         "No se puede asignar Comisión de Servicio Parcial porque el funcionario no tiene una programación base válida. "
-        "Primero debe registrar la programación base del funcionario con Especialidad Principal y Unidad de Desempeño."
+        "Primero debe registrar la programación base del funcionario con Unidad de Desempeño."
     )
+
+
+def test_create_programming_partial_commission_allows_missing_performance_unit_when_rule_does_not_apply(db_session) -> None:
+    user = make_user(user_id=58, role="user")
+    period = make_period(name="2027-11", month=11, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Raúl Flexible",
+        title="Enfermero",
+        rut="76000008",
+        dv="K",
+        law_code="19664",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    commission_reason = db_session.query(models.DismissReason).filter_by(system_key="comision-servicio").one()
+    partial_suboption = db_session.query(models.DismissReasonSuboption).filter_by(reason_id=commission_reason.id, system_key="parcial").one()
+
+    response = programming_router.create_programming(
+        programming=schemas.ProgrammingCreate(
+            funcionario_id=funcionario.id,
+            period_id=period.id,
+            assigned_status="Comisión de Servicio - Parcial",
+            prais=False,
+            dismiss_reason_id=commission_reason.id,
+            dismiss_suboption_id=partial_suboption.id,
+            dismiss_partial_hours=6,
+            global_specialty="Urgencia",
+            selected_process="Apoyo Clínico",
+            selected_performance_unit=None,
+            items=[],
+        ),
+        db=db_session,
+        current_user=user,
+    )
+
+    assert response.dismiss_partial_hours == 6
+    assert response.global_specialty == "Urgencia"
+    assert response.selected_performance_unit is None
 
 
 def test_dashboard_stats_ignore_audits_from_other_periods_with_same_rut(db_session) -> None:
@@ -1393,6 +1569,108 @@ def test_dashboard_stats_count_people_not_raw_contracts_or_inactive_programmings
     assert payload["summary"]["programmed"] == 2
     assert payload["summary"]["unprogrammed"] == 0
     assert payload["summary"]["inactive_total"] == 1
+
+
+def test_dashboard_stats_chart_excludes_current_period_hours_from_historical_bindings(db_session) -> None:
+    user = make_user(user_id=53, role="user")
+    historical_period = make_period(name="2027-06", month=6)
+    current_period = make_period(name="2027-07", month=7, status="ACTIVO", is_active=True)
+    db_session.add_all([user, historical_period, current_period])
+    db_session.flush()
+
+    historical_contract = models.Funcionario(
+        name="Ana Histórica",
+        title="Enfermero",
+        rut="76000001",
+        dv="K",
+        period_id=historical_period.id,
+        status="activo",
+        is_active_roster=True,
+        hours_per_week=44,
+    )
+    current_contract = models.Funcionario(
+        name="Ana Actual",
+        title="Enfermero",
+        rut="76000001",
+        dv="K",
+        period_id=current_period.id,
+        status="activo",
+        is_active_roster=True,
+        hours_per_week=33,
+    )
+    db_session.add_all([historical_contract, current_contract])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=historical_contract.id))
+    db_session.commit()
+
+    payload = stats_router.get_dashboard_stats(
+        period_id=current_period.id,
+        user_id=user.id,
+        history_limit=stats_router.DEFAULT_DASHBOARD_HISTORY_LIMIT,
+        db=db_session,
+        current_user=user,
+    )
+
+    chart_by_period = {item["period"]: item for item in payload["chart_data"]}
+
+    assert payload["summary"]["active_officials"] == 0
+    assert current_period.name not in chart_by_period
+    assert chart_by_period[historical_period.name]["hours"] == 44.0
+
+
+def test_dashboard_stats_chart_excludes_hidden_ruts_in_the_same_period(db_session) -> None:
+    user = make_user(user_id=54, role="user")
+    visible_period = make_period(name="2027-08", month=8)
+    current_period = make_period(name="2027-09", month=9, status="ACTIVO", is_active=True)
+    db_session.add_all([user, visible_period, current_period])
+    db_session.flush()
+
+    visible_contract = models.Funcionario(
+        name="Bruno Visible",
+        title="Médico",
+        rut="76000002",
+        dv="K",
+        period_id=visible_period.id,
+        status="activo",
+        is_active_roster=True,
+        hours_per_week=22,
+    )
+    hidden_contract = models.Funcionario(
+        name="Bruno Oculto",
+        title="Médico",
+        rut="76000002",
+        dv="K",
+        period_id=current_period.id,
+        status="activo",
+        is_active_roster=True,
+        hours_per_week=44,
+    )
+    db_session.add_all([visible_contract, hidden_contract])
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=visible_contract.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=hidden_contract.id),
+        models.UserHiddenOfficial(
+            user_id=user.id,
+            funcionario_rut=hidden_contract.rut,
+            period_id=current_period.id,
+        ),
+    ])
+    db_session.commit()
+
+    payload = stats_router.get_dashboard_stats(
+        period_id=current_period.id,
+        user_id=user.id,
+        history_limit=stats_router.DEFAULT_DASHBOARD_HISTORY_LIMIT,
+        db=db_session,
+        current_user=user,
+    )
+
+    chart_by_period = {item["period"]: item for item in payload["chart_data"]}
+
+    assert payload["summary"]["active_officials"] == 1
+    assert current_period.name not in chart_by_period
+    assert chart_by_period[visible_period.name]["hours"] == 22.0
 
 
 def test_read_programmings_normalizes_bounds_and_preserves_filtered_batches(db_session) -> None:

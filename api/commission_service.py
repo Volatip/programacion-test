@@ -13,12 +13,36 @@ AUTO_ITEM_DESCRIPTION = "Comisión de Servicio Parcial"
 AUTO_OBSERVATION_PREFIX = "Funcionario con comision de servicio parcial"
 PARTIAL_COMMISSION_BASE_PROGRAMMING_MESSAGE = (
     "No se puede asignar Comisión de Servicio Parcial porque el funcionario no tiene una programación base válida. "
-    "Primero debe registrar la programación base del funcionario con Especialidad Principal y Unidad de Desempeño."
 )
 
 
 def _normalize_text(value: str | None) -> str:
     return (value or "").strip().lower()
+
+
+def requires_performance_unit(funcionario: models.Funcionario | None) -> bool:
+    law_code = funcionario.law_code if funcionario else None
+    observations = funcionario.observations if funcionario else None
+    is_law_15076 = "15076" in (law_code or "")
+    is_liberado_guardia = "liberado de guardia" in _normalize_text(observations)
+    return is_law_15076 and not is_liberado_guardia
+
+
+def _format_missing_base_fields_message(missing_fields: list[str]) -> str:
+    if not missing_fields:
+        return PARTIAL_COMMISSION_BASE_PROGRAMMING_MESSAGE + "Primero debe registrar la programación base del funcionario."
+
+    if len(missing_fields) == 1:
+        fields_text = missing_fields[0]
+    elif len(missing_fields) == 2:
+        fields_text = f"{missing_fields[0]} y {missing_fields[1]}"
+    else:
+        fields_text = ", ".join(missing_fields[:-1]) + f" y {missing_fields[-1]}"
+
+    return (
+        PARTIAL_COMMISSION_BASE_PROGRAMMING_MESSAGE
+        + f"Primero debe registrar la programación base del funcionario con {fields_text}."
+    )
 
 
 def is_partial_commission_selection(
@@ -54,26 +78,40 @@ def ensure_partial_commission_hours(
 def ensure_partial_commission_base_fields(
     global_specialty: str | None,
     selected_performance_unit: str | None,
+    *,
+    requires_performance_unit_field: bool,
 ) -> None:
-    if (global_specialty or "").strip() and (selected_performance_unit or "").strip():
+    missing_fields: list[str] = []
+
+    if not (global_specialty or "").strip():
+        missing_fields.append("Especialidad Principal")
+
+    if requires_performance_unit_field and not (selected_performance_unit or "").strip():
+        missing_fields.append("Unidad de Desempeño")
+
+    if not missing_fields:
         return
 
     raise HTTPException(
         status_code=400,
-        detail=PARTIAL_COMMISSION_BASE_PROGRAMMING_MESSAGE,
+        detail=_format_missing_base_fields_message(missing_fields),
     )
 
 
-def ensure_partial_commission_base_programming(programming: models.Programming | None) -> None:
+def ensure_partial_commission_base_programming(
+    programming: models.Programming | None,
+    funcionario: models.Funcionario | None,
+) -> None:
     if programming is None:
         raise HTTPException(
             status_code=400,
-            detail=PARTIAL_COMMISSION_BASE_PROGRAMMING_MESSAGE,
+            detail=_format_missing_base_fields_message([]),
         )
 
     ensure_partial_commission_base_fields(
         programming.global_specialty,
         programming.selected_performance_unit,
+        requires_performance_unit_field=requires_performance_unit(funcionario),
     )
 
 
@@ -113,6 +151,7 @@ def upsert_partial_commission_item(
     hours: int,
 ) -> None:
     activity_type_id = _resolve_auto_activity_type_id(db, programming.period_id)
+    specialty = (programming.global_specialty or "").strip() or None
     auto_item = next(
         (
             item for item in programming.items
@@ -127,6 +166,7 @@ def upsert_partial_commission_item(
                 activity_name=AUTO_ACTIVITY_NAME,
                 activity_type_id=activity_type_id,
                 description=AUTO_ITEM_DESCRIPTION,
+                specialty=specialty,
                 assigned_hours=float(hours),
                 performance=0.0,
             )
@@ -134,6 +174,7 @@ def upsert_partial_commission_item(
         return
 
     auto_item.activity_type_id = activity_type_id
+    auto_item.specialty = specialty
     auto_item.assigned_hours = float(hours)
     auto_item.performance = 0.0
 
