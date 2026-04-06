@@ -207,7 +207,11 @@ def test_database_readiness_accepts_current_head_revision_in_production(tmp_path
     database.create_schema(engine)
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0007_dismiss_reasons')"))
+        for head_revision in database._get_alembic_head_revisions():
+            connection.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+                {"revision": head_revision},
+            )
 
     database.ensure_database_ready(engine, required_tables=("users", "revoked_tokens"))
 

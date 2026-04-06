@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import create_engine, text
 
+from api import database
 from api.scripts import pre_migration_diagnostics
 
 
@@ -72,11 +73,11 @@ def test_collect_readiness_diagnostics_accepts_current_head_without_duplicates(t
             )
         )
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        connection.execute(
-            text(
-                "INSERT INTO alembic_version (version_num) VALUES ('0007_dismiss_reasons')"
+        for head_revision in database._get_alembic_head_revisions():
+            connection.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+                {"revision": head_revision},
             )
-        )
 
     diagnostics = pre_migration_diagnostics.collect_readiness_diagnostics(engine)
 
