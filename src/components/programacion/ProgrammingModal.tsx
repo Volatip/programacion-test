@@ -28,7 +28,6 @@ import {
   getProgrammingVisualState,
   parseProgrammingContractHours,
 } from "../../lib/programmingModalUtils";
-import { dismissReasonsApi, type DismissReason } from "../../lib/dismissReasons";
 import { isSupervisorRole } from "../../lib/userRoles";
 
 
@@ -41,7 +40,7 @@ interface ProgrammingModalProps {
 }
 
 export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingModalProps) {
-  const { officials: myOfficials, groups, assignToGroup, refreshOfficials, activateOfficial, clearPartialCommission, removeOfficial, updateOfficialLocally } = useOfficials();
+  const { officials: myOfficials, groups, assignToGroup, refreshOfficials, updateOfficialLocally } = useOfficials();
   const { selectedPeriod, isReadOnly } = usePeriods();
   const { user } = useAuth();
   const isReadOnlyView = isReadOnly || isSupervisorRole(user?.role);
@@ -74,77 +73,14 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
 
   // Status State - synced with official status
   const [currentOfficialStatus, setCurrentOfficialStatus] = useState<string>(funcionario?.status || "activo");
-  // Pending status for form - only applied on Save
-  const [pendingStatus, setPendingStatus] = useState<string>(funcionario?.status || "activo");
-  const [dismissReasons, setDismissReasons] = useState<DismissReason[]>([]);
-  const [selectedDismissReasonId, setSelectedDismissReasonId] = useState<number | null>(null);
-  const [selectedDismissSuboptionId, setSelectedDismissSuboptionId] = useState<number | null>(null);
-  const [dismissPartialHours, setDismissPartialHours] = useState("");
 
   // Initialize status when funcionario changes
   useEffect(() => {
     if (funcionario) {
         // Normalize status
         setCurrentOfficialStatus(funcionario.status || "activo");
-        setPendingStatus(funcionario.status || "activo");
-        setSelectedDismissReasonId(null);
-        setSelectedDismissSuboptionId(null);
-        setDismissPartialHours("");
     }
   }, [funcionario]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDismissReasons = async () => {
-      try {
-        const data = await dismissReasonsApi.list(true);
-        if (!cancelled) {
-          setDismissReasons(data.filter((reason) => reason.action_type === "dismiss"));
-        }
-      } catch (error) {
-        console.error("Error loading dismiss reasons for programming modal:", error);
-      }
-    };
-
-    void loadDismissReasons();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleStatusChange = (newValue: string) => {
-    if (newValue === "Activo" || newValue === "Inactivo") {
-      setSelectedDismissReasonId(null);
-      setSelectedDismissSuboptionId(null);
-      setPendingStatus(newValue);
-      return;
-    }
-
-    const reason = dismissReasons.find((item) => item.name === newValue) ?? null;
-    setSelectedDismissReasonId(reason?.id ?? null);
-    setSelectedDismissSuboptionId(null);
-    setDismissPartialHours("");
-    setPendingStatus(reason?.name ?? newValue);
-  };
-
-  const handleDismissSuboptionChange = (suboptionId: number | null) => {
-    setSelectedDismissSuboptionId(suboptionId);
-    const reason = dismissReasons.find((item) => item.id === selectedDismissReasonId) ?? null;
-    const suboption = reason?.suboptions.find((item) => item.id === suboptionId) ?? null;
-    if (reason && suboption) {
-      setPendingStatus(`${reason.name} - ${suboption.name}`);
-    } else if (reason) {
-      setPendingStatus(reason.name);
-    }
-    if (!suboption || suboption.name.trim().toLowerCase() !== "parcial") {
-      setDismissPartialHours("");
-    }
-  };
-
-  const selectedDismissReason = dismissReasons.find((reason) => reason.id === selectedDismissReasonId) ?? null;
-  const hasActivePartialCommission = funcionario?.status === "activo" && funcionario.activeStatusLabel === "Comisión de Servicio - Parcial";
 
   const [observations, setObservations] = useState<string>("");
   const [prais, setPrais] = useState<"Si" | "No" | "">("No"); // Default to "No"
@@ -163,9 +99,10 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
   const [globalSpecialty, setGlobalSpecialty] = useState("");
   const [selectedProcess, setSelectedProcess] = useState("");
   const [selectedPerformanceUnit, setSelectedPerformanceUnit] = useState("");
+  const assignedStatus = currentOfficialStatus === "inactivo" ? "Inactivo" : "Activo";
 
   const visualState = funcionario
-    ? getProgrammingVisualState(funcionario, pendingStatus)
+    ? getProgrammingVisualState(funcionario, assignedStatus)
     : null;
   const showPerformanceUnit = visualState?.showPerformanceUnit ?? false;
 
@@ -321,9 +258,6 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
       setProgrammingVersion(existing.version ?? 1);
       setLastUpdatedDate(existing.updated_at || null);
       setObservations(existing.observation || "");
-      setSelectedDismissReasonId(existing.dismiss_reason_id ?? null);
-      setSelectedDismissSuboptionId(existing.dismiss_suboption_id ?? null);
-      setDismissPartialHours(existing.dismiss_partial_hours ? String(existing.dismiss_partial_hours) : "");
 
       // Store programmer names for validation
       setCreatorName(existing.created_by_name || null);
@@ -522,7 +456,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
 
   const validateForm = (): string[] => {
     const { errors, missingFields } = validateProgrammingForm({
-      pendingStatus,
+      pendingStatus: assignedStatus,
       isAvailableNegative,
       showSpecialty,
       globalSpecialty,
@@ -584,12 +518,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
     programmingVersion,
     observations,
     assignedGroupId,
-    pendingStatus,
-    selectedDismissReason,
-    selectedDismissSuboptionId,
-    dismissPartialHours,
     currentOfficialStatus,
-    currentActiveStatusLabel: funcionario?.activeStatusLabel,
     prais,
     globalSpecialty,
     selectedProcess,
@@ -603,14 +532,11 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
     onNext,
     onClose,
     validateForm,
-    activateOfficial,
-    clearPartialCommission,
-    removeOfficial,
     assignToGroup,
-     refreshOfficials,
-     reloadLatestProgramming,
-     updateCache,
-     updateOfficialLocally,
+    refreshOfficials,
+    reloadLatestProgramming,
+    updateCache,
+    updateOfficialLocally,
     setCopySourceId,
     setProgrammingId,
     setProgrammingVersion,
@@ -722,16 +648,6 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
             assignedGroupId={assignedGroupId}
             handleGroupChange={handleGroupChange}
             groups={groups}
-            pendingStatus={pendingStatus}
-            currentOfficialStatus={currentOfficialStatus}
-            handleStatusChange={handleStatusChange}
-          dismissReasons={dismissReasons}
-          selectedDismissReasonId={selectedDismissReasonId}
-          selectedDismissSuboptionId={selectedDismissSuboptionId}
-          handleDismissSuboptionChange={handleDismissSuboptionChange}
-          showClearPartialCommissionAction={hasActivePartialCommission}
-          dismissPartialHours={dismissPartialHours}
-          setDismissPartialHours={setDismissPartialHours}
             observations={observations}
             setObservations={setObservations}
             onPrint={handlePrint}

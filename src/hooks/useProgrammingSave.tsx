@@ -7,8 +7,7 @@ import type { ProgrammingData } from "../context/ProgrammingCacheContextDefs";
 import { fetchWithAuth } from "../lib/api";
 import { buildProgrammingPayload, ProgrammingSaveError, readProgrammingSaveError } from "../lib/programmingPersistence";
 import type { ToastType } from "../components/ui/Toast";
-import { isPartialCommissionSelection, type DismissReason } from "../lib/dismissReasons";
-import { isProgrammingExemptStatus, deriveOfficialStatus } from "../lib/programmingStatus";
+import { deriveOfficialStatus } from "../lib/programmingStatus";
 
 interface ProgrammingToastConfig {
   isOpen: boolean;
@@ -24,12 +23,7 @@ interface UseProgrammingSaveParams {
   programmingVersion: number | null;
   observations: string;
   assignedGroupId: number | "none" | "";
-  pendingStatus: string;
-  selectedDismissReason: DismissReason | null;
-  selectedDismissSuboptionId: number | null;
-  dismissPartialHours: string;
   currentOfficialStatus: string;
-  currentActiveStatusLabel?: string;
   prais: "Si" | "No" | "";
   globalSpecialty: string;
   selectedProcess: string;
@@ -43,9 +37,6 @@ interface UseProgrammingSaveParams {
   onNext?: () => void;
   onClose: () => void;
   validateForm: () => string[];
-  activateOfficial: (id: number) => Promise<void>;
-  clearPartialCommission: (id: number) => Promise<void>;
-  removeOfficial: (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string; partialHours?: number }) => Promise<void>;
   assignToGroup: (officialId: number, groupId: number) => Promise<void>;
   refreshOfficials: () => Promise<void>;
   reloadLatestProgramming: () => Promise<void>;
@@ -67,12 +58,7 @@ export function useProgrammingSave({
   programmingVersion,
   observations,
   assignedGroupId,
-  pendingStatus,
-  selectedDismissReason,
-  selectedDismissSuboptionId,
-  dismissPartialHours,
   currentOfficialStatus,
-  currentActiveStatusLabel,
   prais,
   globalSpecialty,
   selectedProcess,
@@ -86,9 +72,6 @@ export function useProgrammingSave({
   onNext,
   onClose,
   validateForm,
-  activateOfficial,
-  clearPartialCommission,
-  removeOfficial,
   assignToGroup,
   refreshOfficials,
   reloadLatestProgramming,
@@ -132,49 +115,9 @@ export function useProgrammingSave({
     setIsSubmitting(true);
 
     try {
-      const statusChanged = pendingStatus !== currentOfficialStatus;
       const nextGroupId = assignedGroupId === "none" || assignedGroupId === "" ? 0 : Number(assignedGroupId);
-      const nextOfficialStatus = deriveOfficialStatus(pendingStatus, currentOfficialStatus);
-      const shouldClearPartialCommission = currentOfficialStatus === "activo"
-        && currentActiveStatusLabel === "Comisión de Servicio - Parcial"
-        && !selectedDismissReason
-        && !selectedDismissSuboptionId
-        && !dismissPartialHours.trim();
-
-      if (statusChanged && selectedDismissReason?.suboptions.length && !selectedDismissSuboptionId) {
-        setToastConfig({
-          isOpen: true,
-          type: "error",
-          message: "Debe seleccionar una subopción para la baja elegida.",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (statusChanged && isPartialCommissionSelection(selectedDismissReason, selectedDismissSuboptionId) && !dismissPartialHours.trim()) {
-        setToastConfig({
-          isOpen: true,
-          type: "error",
-          message: "Debe ingresar las horas para la Comisión de Servicio Parcial.",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (statusChanged) {
-        if (pendingStatus === "Activo" && currentOfficialStatus === "inactivo") {
-          await activateOfficial(funcionario.id);
-        } else if (isProgrammingExemptStatus(pendingStatus)) {
-          await removeOfficial(funcionario.id, {
-            reasonId: selectedDismissReason?.id,
-            reason: selectedDismissReason?.name ?? pendingStatus,
-            suboptionId: selectedDismissSuboptionId ?? undefined,
-            partialHours: dismissPartialHours.trim() ? Number(dismissPartialHours) : undefined,
-          });
-        }
-      } else if (shouldClearPartialCommission) {
-        await clearPartialCommission(funcionario.id);
-      }
+      const assignedStatus = currentOfficialStatus === "inactivo" ? "Inactivo" : "Activo";
+      const nextOfficialStatus = deriveOfficialStatus(assignedStatus, currentOfficialStatus);
 
       const payload = buildProgrammingPayload({
         funcionarioId: funcionario.id,
@@ -182,11 +125,7 @@ export function useProgrammingSave({
         version: programmingVersion ?? 1,
         observations,
         assignedGroupId,
-        pendingStatus,
-        dismissReasonId: selectedDismissReason?.id,
-        dismissSuboptionId: selectedDismissSuboptionId,
-        dismissPartialHours,
-        clearPartialCommission: shouldClearPartialCommission,
+        pendingStatus: assignedStatus,
         prais,
         globalSpecialty,
         selectedProcess,
@@ -233,7 +172,6 @@ export function useProgrammingSave({
         programmingId: savedData.id,
         programmingUpdatedAt: savedData.updated_at,
         totalScheduledHours,
-        activeStatusLabel: shouldClearPartialCommission ? undefined : funcionario.activeStatusLabel,
       });
 
       if (copySourceId) {
@@ -252,7 +190,7 @@ export function useProgrammingSave({
         }
       }
 
-      if (statusChanged && nextOfficialStatus === "inactivo") {
+      if (nextOfficialStatus === "inactivo") {
         await refreshOfficials();
       }
 
@@ -260,7 +198,7 @@ export function useProgrammingSave({
       setToastConfig({
         isOpen: true,
         type: "success",
-        message: "Programación y estado guardados exitosamente",
+        message: "Programación guardada exitosamente",
       });
 
       setTimeout(() => {
@@ -323,16 +261,8 @@ export function useProgrammingSave({
     validateForm,
     setToastConfig,
     setIsSubmitting,
-    pendingStatus,
-    selectedDismissReason,
-    selectedDismissSuboptionId,
-    dismissPartialHours,
     currentOfficialStatus,
-    currentActiveStatusLabel,
     assignedGroupId,
-    activateOfficial,
-    clearPartialCommission,
-    removeOfficial,
     selectedPeriodId,
     observations,
     prais,

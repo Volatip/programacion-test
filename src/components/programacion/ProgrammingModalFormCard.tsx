@@ -11,7 +11,6 @@ import { ProgrammingActionBar } from "./ProgrammingActionBar";
 import { ProgrammingConfigPanels } from "./ProgrammingConfigPanels";
 import { ProgrammingCopySection } from "./ProgrammingCopySection";
 import { ProgrammingMetadataSection } from "./ProgrammingMetadataSection";
-import type { DismissReason } from "../../lib/dismissReasons";
 
 interface ProgrammingModalFormCardProps {
   isLoadingProgramming: boolean;
@@ -54,16 +53,6 @@ interface ProgrammingModalFormCardProps {
   assignedGroupId: number | "none" | "";
   handleGroupChange: (newGroupId: number | "none" | "") => void;
   groups: Group[];
-  pendingStatus: string;
-  currentOfficialStatus: string;
-  handleStatusChange: (newValue: string) => void;
-  dismissReasons: DismissReason[];
-  selectedDismissReasonId: number | null;
-  selectedDismissSuboptionId: number | null;
-  handleDismissSuboptionChange: (suboptionId: number | null) => void;
-  showClearPartialCommissionAction: boolean;
-  dismissPartialHours: string;
-  setDismissPartialHours: (value: string) => void;
   observations: string;
   setObservations: (value: string) => void;
   onPrint: () => void;
@@ -119,16 +108,6 @@ export function ProgrammingModalFormCard({
   assignedGroupId,
   handleGroupChange,
   groups,
-  pendingStatus,
-  currentOfficialStatus,
-  handleStatusChange,
-  dismissReasons,
-  selectedDismissReasonId,
-  selectedDismissSuboptionId,
-  handleDismissSuboptionChange,
-  showClearPartialCommissionAction,
-  dismissPartialHours,
-  setDismissPartialHours,
   observations,
   setObservations,
   onPrint,
@@ -225,16 +204,6 @@ export function ProgrammingModalFormCard({
           handleGroupChange={handleGroupChange}
           groups={groups}
           formErrors={formErrors}
-          pendingStatus={pendingStatus}
-          currentOfficialStatus={currentOfficialStatus}
-          handleStatusChange={handleStatusChange}
-          dismissReasons={dismissReasons}
-          selectedDismissReasonId={selectedDismissReasonId}
-          selectedDismissSuboptionId={selectedDismissSuboptionId}
-          handleDismissSuboptionChange={handleDismissSuboptionChange}
-          showClearPartialCommissionAction={showClearPartialCommissionAction}
-          dismissPartialHours={dismissPartialHours}
-          setDismissPartialHours={setDismissPartialHours}
           observations={observations}
           setObservations={setObservations}
           isReadOnly={isReadOnly}
