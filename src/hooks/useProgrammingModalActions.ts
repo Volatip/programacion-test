@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type React from "react";
 import type { ToastType } from "../components/ui/Toast";
 import type { Funcionario } from "../context/OfficialsContext";
-import { fetchWithAuth } from "../lib/api";
+import { fetchWithAuth, parseErrorDetail } from "../lib/api";
 import { normalizeText } from "../lib/normalizeText";
 import {
   ensureMinimumProgrammingEntries,
@@ -153,7 +153,7 @@ export function useProgrammingModalActions({
       });
 
       if (!response.ok) {
-        throw new Error("Error al eliminar la programación");
+        throw new Error(await parseErrorDetail(response, "Error al eliminar la programación"));
       }
 
       removeCachedProgramming(funcionario.id);
@@ -166,9 +166,13 @@ export function useProgrammingModalActions({
       onClose();
     } catch (error) {
       console.error("Failed to delete:", error);
-      alert("Error al eliminar");
+      setToastConfig({
+        isOpen: true,
+        type: "error",
+        message: error instanceof Error ? error.message : "Error al eliminar la programación",
+      });
     }
-  }, [funcionario, programmingId, removeCachedProgramming, updateOfficialLocally, onClose]);
+  }, [funcionario, programmingId, removeCachedProgramming, updateOfficialLocally, onClose, setToastConfig]);
 
   return {
     handleCopyProgramming,

@@ -556,6 +556,96 @@ def test_admin_must_bind_funcionario_before_saving_programming(db_session) -> No
     assert programming_exc.value.detail == "No se pudo guardar la programación porque el funcionario no está agregado en Funcionarios para este perfil."
 
 
+def test_delete_programming_blocks_when_funcionario_is_linked_to_two_users(db_session) -> None:
+    owner = make_user(user_id=531, role="user")
+    collaborator = make_user(user_id=532, role="user")
+    period = make_period(name="2027-03", month=3, status="ACTIVO", is_active=True)
+    db_session.add_all([owner, collaborator, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="Funcionario Compartido",
+        title="Enfermero",
+        rut="77000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=owner.id, funcionario_id=funcionario.id),
+        models.UserOfficial(user_id=collaborator.id, funcionario_id=funcionario.id),
+    ])
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        assigned_status="Activo",
+        selected_process="Consulta",
+        created_by_id=owner.id,
+        updated_by_id=owner.id,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        programming_router.delete_programming(
+            programming_id=programming.id,
+            db=db_session,
+            current_user=owner,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == (
+        "No es posible eliminar la programación; solo se puede modificar porque hay dos o más usuarios asociados a este funcionario."
+    )
+    assert db_session.query(models.Programming).filter(models.Programming.id == programming.id).one().id == programming.id
+    assert db_session.query(models.OfficialAudit).filter(models.OfficialAudit.action == "Delete Programming").count() == 0
+
+
+def test_delete_programming_keeps_current_flow_with_single_linked_user(db_session) -> None:
+    owner = make_user(user_id=533, role="user")
+    period = make_period(name="2027-04", month=4, status="ACTIVO", is_active=True)
+    db_session.add_all([owner, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="Funcionario Individual",
+        title="Enfermero",
+        rut="77000003",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=owner.id, funcionario_id=funcionario.id))
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        assigned_status="Activo",
+        selected_process="Consulta",
+        created_by_id=owner.id,
+        updated_by_id=owner.id,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    response = programming_router.delete_programming(
+        programming_id=programming.id,
+        db=db_session,
+        current_user=owner,
+    )
+
+    assert response == {"message": "Programming deleted"}
+    assert db_session.query(models.Programming).filter(models.Programming.id == programming.id).count() == 0
+    audit = db_session.query(models.OfficialAudit).filter(models.OfficialAudit.action == "Delete Programming").one()
+    assert audit.funcionario_id == funcionario.id
+    assert audit.user_id == owner.id
+
+
 def test_read_general_rows_returns_all_user_assignments_for_admin(db_session) -> None:
     admin = make_user(user_id=500, role="admin")
     owner_a = make_user(user_id=501, role="user")

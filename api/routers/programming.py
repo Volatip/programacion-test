@@ -738,6 +738,19 @@ def delete_programming(
         
         # Permission Check
         PermissionChecker.check_can_edit_programming(current_user, db_programming.funcionario_id, db)
+
+        linked_users_count = db.query(models.UserOfficial.user_id).filter(
+            models.UserOfficial.funcionario_id == db_programming.funcionario_id
+        ).distinct().count()
+
+        if linked_users_count >= 2:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No es posible eliminar la programación; solo se puede modificar "
+                    "porque hay dos o más usuarios asociados a este funcionario."
+                ),
+            )
         
         # Get info before delete
         func_info = db_programming.funcionario
@@ -757,6 +770,9 @@ def delete_programming(
         )
         
         return {"message": "Programming deleted"}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception:
         db.rollback()
         logger.exception("Error deleting programming_id=%s", programming_id)
