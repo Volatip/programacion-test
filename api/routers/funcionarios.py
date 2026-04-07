@@ -10,7 +10,7 @@ from api import models, schemas, database, auth
 from api.commission_service import apply_partial_commission_programming, clear_partial_commission_programming, ensure_partial_commission_base_programming, ensure_partial_commission_hours, is_partial_commission_selection
 from api.dismiss_reasons import HIDE_ACTION, resolve_dismiss_selection, resolve_reason_category
 from api.query_bounds import normalize_limit, normalize_skip
-from api.permissions import PermissionChecker
+from api.permissions import MEDICAL_FUNCIONARIO_TITLE, PermissionChecker
 
 router = APIRouter()
 
@@ -77,6 +77,21 @@ def get_user_scoped_ruts(
 
     hidden_ruts = {row[0] for row in hidden_query.all() if row[0]}
     return [rut for rut in linked_ruts if rut not in hidden_ruts]
+
+
+def apply_role_based_funcionario_filter(query, user_role: str):
+    if user_role == 'medical_coordinator':
+        return query.filter(models.Funcionario.title == MEDICAL_FUNCIONARIO_TITLE)
+
+    if user_role == 'non_medical_coordinator':
+        return query.filter(
+            or_(
+                models.Funcionario.title.is_(None),
+                models.Funcionario.title != MEDICAL_FUNCIONARIO_TITLE,
+            )
+        )
+
+    return query
 
 @router.post("/upload")
 async def upload_funcionarios(
@@ -730,10 +745,7 @@ def read_funcionarios(
     if period_id:
         query = query.filter(models.Funcionario.period_id == period_id)
 
-    if user_role == 'medical_coordinator':
-        query = query.filter(models.Funcionario.title == 'Médico(a) Cirujano(a)')
-    elif user_role == 'non_medical_coordinator':
-        query = query.filter(models.Funcionario.title != 'Médico(a) Cirujano(a)')
+    query = apply_role_based_funcionario_filter(query, user_role)
 
     all_contracts = query.order_by(models.Funcionario.rut).all()
     rut_to_group = build_rut_to_group(get_period_group_assignments(db, period_id))
@@ -856,10 +868,7 @@ def search_funcionarios(
             query = query.filter(models.Funcionario.period_id == period_id)
             
         # Apply Role Filtering
-        if user_role == 'medical_coordinator':
-             query = query.filter(models.Funcionario.title == 'Médico(a) Cirujano(a)')
-        elif user_role == 'non_medical_coordinator':
-             query = query.filter(models.Funcionario.title != 'Médico(a) Cirujano(a)')
+        query = apply_role_based_funcionario_filter(query, user_role)
             
         all_contracts = query.order_by(models.Funcionario.rut).all()
         
@@ -878,7 +887,7 @@ def search_funcionarios(
     
     query = db.query(models.Funcionario).filter(final_search_condition)
 
-    if user_role != 'admin' and effective_user_id is not None:
+    if user_role not in {'admin', 'medical_coordinator', 'non_medical_coordinator'} and effective_user_id is not None:
         scoped_ruts = get_user_scoped_ruts(db, effective_user_id, period_id=period_id, include_hidden=True)
         if not scoped_ruts:
             return []
@@ -888,10 +897,7 @@ def search_funcionarios(
         query = query.filter(models.Funcionario.period_id == period_id)
         
     # Apply Role Filtering (CRITICAL for "Nuevo Funcionario")
-    if user_role == 'medical_coordinator':
-         query = query.filter(models.Funcionario.title == 'Médico(a) Cirujano(a)')
-    elif user_role == 'non_medical_coordinator':
-         query = query.filter(models.Funcionario.title != 'Médico(a) Cirujano(a)')
+    query = apply_role_based_funcionario_filter(query, user_role)
     # admin sees all
         
     all_contracts = query.order_by(models.Funcionario.rut).all()

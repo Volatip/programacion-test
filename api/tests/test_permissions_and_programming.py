@@ -816,6 +816,249 @@ def test_search_funcionarios_global_scope_excludes_unassigned_officials_for_non_
     assert [item["rut"] for item in payload] == ["50000001"]
 
 
+def test_medical_coordinator_can_search_medical_globally_without_prior_scope(db_session) -> None:
+    coordinator = make_user(user_id=441, role="medical_coordinator")
+    period = make_period(name="2026-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([coordinator, period])
+    db_session.flush()
+
+    medico = models.Funcionario(
+        name="Dra. Ana",
+        title="Médico(a) Cirujano(a)",
+        rut="55000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    no_medico = models.Funcionario(
+        name="Ana Enfermera",
+        title="Enfermero",
+        rut="55000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([medico, no_medico])
+    db_session.commit()
+
+    payload = funcionarios_router.search_funcionarios(
+        q="Ana",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=coordinator,
+    )
+
+    assert [item["rut"] for item in payload] == ["55000001"]
+
+
+def test_medical_coordinator_can_bind_medical_without_prior_scope_and_cannot_bind_non_medical(db_session) -> None:
+    coordinator = make_user(user_id=442, role="medical_coordinator")
+    period = make_period(name="2026-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([coordinator, period])
+    db_session.flush()
+
+    medico = models.Funcionario(
+        name="Dr. Bruno",
+        title="Médico(a) Cirujano(a)",
+        rut="56000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    no_medico = models.Funcionario(
+        name="Bruno TENS",
+        title="TENS",
+        rut="56000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([medico, no_medico])
+    db_session.commit()
+
+    payload = funcionarios_router.bind_funcionario_to_user(
+        funcionario_id=medico.id,
+        payload=None,
+        db=db_session,
+        current_user=coordinator,
+    )
+
+    assert payload == {"message": "Bound successfully"}
+    assert db_session.query(models.UserOfficial).filter_by(user_id=coordinator.id, funcionario_id=medico.id).count() == 1
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.bind_funcionario_to_user(
+            funcionario_id=no_medico.id,
+            payload=None,
+            db=db_session,
+            current_user=coordinator,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "No tiene permiso para vincular este funcionario según su rol."
+
+
+def test_non_medical_coordinator_can_search_and_bind_non_medical_without_prior_scope(db_session) -> None:
+    coordinator = make_user(user_id=443, role="non_medical_coordinator")
+    period = make_period(name="2026-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([coordinator, period])
+    db_session.flush()
+
+    no_medico = models.Funcionario(
+        name="Carla Enfermera",
+        title="Enfermero",
+        rut="57000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    medico = models.Funcionario(
+        name="Carla Médica",
+        title="Médico(a) Cirujano(a)",
+        rut="57000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([no_medico, medico])
+    db_session.commit()
+
+    payload = funcionarios_router.search_funcionarios(
+        q="Carla",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=coordinator,
+    )
+
+    assert [item["rut"] for item in payload] == ["57000001"]
+
+    bind_payload = funcionarios_router.bind_funcionario_to_user(
+        funcionario_id=no_medico.id,
+        payload=None,
+        db=db_session,
+        current_user=coordinator,
+    )
+
+    assert bind_payload == {"message": "Bound successfully"}
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.bind_funcionario_to_user(
+            funcionario_id=medico.id,
+            payload=None,
+            db=db_session,
+            current_user=coordinator,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "No tiene permiso para vincular este funcionario según su rol."
+
+
+def test_admin_keeps_full_global_search_and_bind_access(db_session) -> None:
+    admin = make_user(user_id=444, role="admin")
+    target_user = make_user(user_id=445, role="medical_coordinator")
+    period = make_period(name="2026-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, target_user, period])
+    db_session.flush()
+
+    medico = models.Funcionario(
+        name="Daniel Médico",
+        title="Médico(a) Cirujano(a)",
+        rut="58000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    no_medico = models.Funcionario(
+        name="Daniel Enfermero",
+        title="Enfermero",
+        rut="58000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([medico, no_medico])
+    db_session.commit()
+
+    payload = funcionarios_router.search_funcionarios(
+        q="Daniel",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=admin,
+    )
+
+    assert {item["rut"] for item in payload} == {"58000001", "58000002"}
+
+    bind_payload = funcionarios_router.bind_funcionario_to_user(
+        funcionario_id=no_medico.id,
+        payload={"user_id": target_user.id},
+        db=db_session,
+        current_user=admin,
+    )
+
+    assert bind_payload == {"message": "Bound successfully"}
+    assert db_session.query(models.UserOfficial).filter_by(user_id=target_user.id, funcionario_id=no_medico.id).count() == 1
+
+
+def test_medical_coordinator_global_search_stays_role_filtered_after_existing_scope(db_session) -> None:
+    coordinator = make_user(user_id=446, role="medical_coordinator")
+    period = make_period(name="2026-06", month=6, status="ACTIVO", is_active=True)
+    db_session.add_all([coordinator, period])
+    db_session.flush()
+
+    scoped_medico = models.Funcionario(
+        name="Elena Médica Scope",
+        title="Médico(a) Cirujano(a)",
+        rut="59000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    unscoped_medico = models.Funcionario(
+        name="Elena Médica Global",
+        title="Médico(a) Cirujano(a)",
+        rut="59000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    no_medico = models.Funcionario(
+        name="Elena Enfermera",
+        title="Enfermero",
+        rut="59000003",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([scoped_medico, unscoped_medico, no_medico])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=coordinator.id, funcionario_id=scoped_medico.id))
+    db_session.commit()
+
+    payload = funcionarios_router.search_funcionarios(
+        q="Elena",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=coordinator,
+    )
+
+    assert {item["rut"] for item in payload} == {"59000001", "59000002"}
+
+
 def test_bind_funcionario_rejects_arbitrary_self_assignment_for_non_admin(db_session) -> None:
     user = make_user(user_id=45, role="user")
     period = make_period(name="2026-07", month=7, status="ACTIVO", is_active=True)

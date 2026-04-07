@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from . import models
 
 
+MEDICAL_FUNCIONARIO_TITLE = "Médico(a) Cirujano(a)"
+
+
 class PermissionChecker:
     @staticmethod
     def is_admin(user: models.User) -> bool:
@@ -11,6 +14,33 @@ class PermissionChecker:
     @staticmethod
     def is_supervisor(user: models.User) -> bool:
         return getattr(user, "role", None) == "supervisor"
+
+    @staticmethod
+    def is_medical_coordinator(user: models.User) -> bool:
+        return getattr(user, "role", None) == "medical_coordinator"
+
+    @staticmethod
+    def is_non_medical_coordinator(user: models.User) -> bool:
+        return getattr(user, "role", None) == "non_medical_coordinator"
+
+    @staticmethod
+    def is_coordinator(user: models.User) -> bool:
+        return PermissionChecker.is_medical_coordinator(user) or PermissionChecker.is_non_medical_coordinator(user)
+
+    @staticmethod
+    def is_funcionario_allowed_by_role(user: models.User, funcionario: models.Funcionario) -> bool:
+        if PermissionChecker.is_admin(user):
+            return True
+
+        funcionario_title = getattr(funcionario, "title", None)
+
+        if PermissionChecker.is_medical_coordinator(user):
+            return funcionario_title == MEDICAL_FUNCIONARIO_TITLE
+
+        if PermissionChecker.is_non_medical_coordinator(user):
+            return funcionario_title != MEDICAL_FUNCIONARIO_TITLE
+
+        return True
 
     @staticmethod
     def require_admin(user: models.User, detail: str = "Acceso denegado. Se requieren privilegios de administrador."):
@@ -150,6 +180,15 @@ class PermissionChecker:
             )
 
         if PermissionChecker.is_admin(user):
+            return funcionario
+
+        if not PermissionChecker.is_funcionario_allowed_by_role(user, funcionario):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tiene permiso para vincular este funcionario según su rol."
+            )
+
+        if PermissionChecker.is_coordinator(user):
             return funcionario
 
         direct_assignment = db.query(models.UserOfficial).filter(
