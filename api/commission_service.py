@@ -6,7 +6,11 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from . import models
-from .dismiss_reasons import format_dismiss_reason_label
+from .dismiss_reasons import (
+    REASON_SYSTEM_KEY_COMMISSION_SERVICE,
+    SUBOPTION_SYSTEM_KEY_PARTIAL,
+    format_dismiss_reason_label,
+)
 
 AUTO_ACTIVITY_NAME = "Otras Actividades No Clínicas"
 AUTO_ITEM_DESCRIPTION = "Comisión de Servicio Parcial"
@@ -53,9 +57,11 @@ def is_partial_commission_selection(
     reason_name = _normalize_text(reason.name if reason else None)
     suboption_key = _normalize_text(suboption.system_key if suboption else None)
     suboption_name = _normalize_text(suboption.name if suboption else None)
-    return reason_key == "comision-servicio" and (suboption_key == "parcial" or suboption_name == "parcial") or (
-        reason_name in {"comisión de servicio", "comision de servicio"} and suboption_name == "parcial"
-    )
+
+    if reason_key == REASON_SYSTEM_KEY_COMMISSION_SERVICE:
+        return suboption_key == SUBOPTION_SYSTEM_KEY_PARTIAL or suboption_name == SUBOPTION_SYSTEM_KEY_PARTIAL
+
+    return reason_name in {"comisión de servicio", "comision de servicio"} and suboption_name == SUBOPTION_SYSTEM_KEY_PARTIAL
 
 
 def ensure_partial_commission_hours(
@@ -243,6 +249,7 @@ def clear_partial_commission_programming(programming: models.Programming | None)
     programming.dismiss_partial_hours = None
     programming.dismiss_reason_id = None
     programming.dismiss_suboption_id = None
+    programming.dismiss_start_date = None
     programming.assigned_status = "Activo"
     programming.observation = "\n".join(
         line.strip()

@@ -1,6 +1,9 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional, Any, Union
-from datetime import datetime
+from datetime import date, datetime
+
+DISMISS_REASON_SYSTEM_KEY_PATTERN = r"^(comision-servicio)$"
+DISMISS_SUBOPTION_SYSTEM_KEY_PATTERN = r"^(total|parcial)$"
 
 # ==========================================
 # Config & Catalogs
@@ -65,10 +68,11 @@ class DismissReasonSuboptionBase(BaseModel):
 
 
 class DismissReasonSuboptionCreate(DismissReasonSuboptionBase):
-    pass
+    system_key: Optional[str] = Field(default=None, pattern=DISMISS_SUBOPTION_SYSTEM_KEY_PATTERN)
 
 
 class DismissReasonSuboptionUpdate(BaseModel):
+    system_key: Optional[str] = Field(default=None, pattern=DISMISS_SUBOPTION_SYSTEM_KEY_PATTERN)
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     description: Optional[str] = None
     sort_order: Optional[int] = None
@@ -76,6 +80,7 @@ class DismissReasonSuboptionUpdate(BaseModel):
 
 class DismissReasonSuboptionResponse(DismissReasonSuboptionBase):
     id: int
+    system_key: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -88,23 +93,28 @@ class DismissReasonBase(BaseModel):
     reason_category: str = Field(pattern="^(resignation|mobility|other)$")
     sort_order: int = 0
     is_active: bool = True
+    requires_start_date: bool = False
 
 
 class DismissReasonCreate(DismissReasonBase):
+    system_key: Optional[str] = Field(default=None, pattern=DISMISS_REASON_SYSTEM_KEY_PATTERN)
     suboptions: List[DismissReasonSuboptionCreate] = []
 
 
 class DismissReasonUpdate(BaseModel):
+    system_key: Optional[str] = Field(default=None, pattern=DISMISS_REASON_SYSTEM_KEY_PATTERN)
     name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     description: Optional[str] = None
     action_type: Optional[str] = Field(default=None, pattern="^(dismiss|hide)$")
     reason_category: Optional[str] = Field(default=None, pattern="^(resignation|mobility|other)$")
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+    requires_start_date: Optional[bool] = None
 
 
 class DismissReasonResponse(DismissReasonBase):
     id: int
+    system_key: Optional[str] = None
     suboptions: List[DismissReasonSuboptionResponse] = []
 
     class Config:
@@ -117,6 +127,7 @@ class DismissSelectionRequest(BaseModel):
     suboption_id: Optional[int] = None
     suboption: Optional[str] = None
     partial_hours: Optional[int] = Field(default=None, ge=1)
+    start_date: Optional[date] = None
     user_id: Optional[int] = None
 
 class SpecialtyStatResponse(BaseModel):
@@ -326,6 +337,8 @@ class FuncionarioConsolidated(BaseModel):
     status: str
     inactive_reason: Optional[str] = None
     active_status_label: Optional[str] = None
+    has_future_dismiss_scheduled: bool = False
+    future_dismiss_start_date: Optional[datetime] = None
     observations: str
     
     holiday_days: int

@@ -7,6 +7,7 @@ interface FuncionariosTableProps {
   canManageOfficials: boolean;
   getContractHoursDisplay: (func: Funcionario) => string;
   onActivate: (id: number) => void;
+  onClearFutureDismiss: (id: number) => void;
   onClearPartialCommission: (id: number) => void;
   onDelete: (id: number) => void;
 }
@@ -18,6 +19,7 @@ export function FuncionariosTable({
   canManageOfficials,
   getContractHoursDisplay,
   onActivate,
+  onClearFutureDismiss,
   onClearPartialCommission,
   onDelete,
 }: FuncionariosTableProps) {
@@ -41,6 +43,7 @@ export function FuncionariosTable({
   };
 
   const isPartialCommissionActive = (func: Funcionario) => func.status === "activo" && func.activeStatusLabel === "Comisión de Servicio - Parcial";
+  const hasFutureDismissScheduled = (func: Funcionario) => func.status === "activo" && func.hasFutureDismissScheduled === true;
 
   if (officials.length === 0) {
     return (
@@ -176,6 +179,15 @@ export function FuncionariosTable({
                             title="Quitar comisión parcial"
                           >
                             Sin comisión
+                          </button>
+                        )}
+                        {hasFutureDismissScheduled(func) && (
+                          <button
+                            onClick={() => onClearFutureDismiss(func.id)}
+                            className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-md hover:bg-amber-700 transition-colors shadow-sm whitespace-nowrap"
+                            title="Quitar baja futura"
+                          >
+                            Quitar baja futura
                           </button>
                         )}
                         <button

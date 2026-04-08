@@ -2,6 +2,7 @@ import { BarChart, ChevronRight, Edit2, MoreVertical, Plus, Trash2, UserPlus } f
 import type React from "react";
 import { useNavigate } from "react-router-dom";
 import type { Group } from "../../context/OfficialsContextDefs";
+import { APP_ROUTES } from "../../lib/appPaths";
 import { isAutomaticProgrammingGroup } from "../../lib/programmingGroups";
 
 interface ProgrammingGroupsPanelProps {
@@ -70,7 +71,7 @@ export function ProgrammingGroupsPanel({
             className="relative group bg-gray-50 dark:bg-gray-700/50 hover:bg-white dark:hover:bg-gray-700 rounded-2xl border border-transparent hover:border-green-100 dark:hover:border-green-700 hover:shadow-lg transition-all duration-300"
           >
             <div
-              onClick={() => navigate(`/programacion/grupo/${group.id}`)}
+              onClick={() => navigate(APP_ROUTES.programmingGroup(group.id))}
               className="p-5 cursor-pointer h-full flex flex-col justify-between"
             >
               <div className="flex justify-between items-start mb-2">

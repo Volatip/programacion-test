@@ -8,6 +8,7 @@ import { ProgrammingGroupOfficialsList } from "../components/programacion/Progra
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { AddOfficialToGroupModal } from "../components/programacion/AddOfficialToGroupModal";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { APP_ROUTES } from "../lib/appPaths";
 import { getOfficialsForProgrammingGroup, isAutomaticProgrammingGroup } from "../lib/programmingGroups";
 import { useAuth } from "../context/AuthContext";
 import { isSupervisorRole } from "../lib/userRoles";
@@ -108,7 +109,7 @@ export function ProgramacionGrupo() {
             officialsCount={groupOfficials.length}
              isReadOnly={isReadOnlyView}
              canAssignOfficials={!isAutomaticGroup && canManageProgramming}
-            onBack={() => navigate("/programacion")}
+            onBack={() => navigate(APP_ROUTES.programming)}
             onAddOfficial={() => setIsAddOfficialModalOpen(true)}
           />
         </div>

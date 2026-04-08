@@ -37,12 +37,13 @@ vi.mock("../lib/api", async () => {
 const fetchWithAuthMock = vi.mocked(fetchWithAuth);
 
 function Consumer() {
-  const { officials, assignToGroup } = useOfficials();
+  const { officials, assignToGroup, clearFutureDismiss } = useOfficials();
   const [result, setResult] = useState("idle");
 
   return (
     <>
       <div data-testid="group-id">{officials[0]?.groupId ?? "none"}</div>
+      <div data-testid="future-dismiss">{officials[0]?.hasFutureDismissScheduled ? "yes" : "no"}</div>
       <div data-testid="result">{result}</div>
       <button
         onClick={async () => {
@@ -56,11 +57,23 @@ function Consumer() {
       >
         Asignar
       </button>
+      <button
+        onClick={async () => {
+          try {
+            await clearFutureDismiss(1);
+            setResult("future-cleared");
+          } catch (error) {
+            setResult(error instanceof Error ? error.message : "unknown-error");
+          }
+        }}
+      >
+        Quitar baja futura
+      </button>
     </>
   );
 }
 
-describe("OfficialsProvider assignToGroup", () => {
+describe("OfficialsProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -82,6 +95,8 @@ describe("OfficialsProvider assignToGroup", () => {
               specialty_sis: "Urgencia",
               lunch_time_minutes: 60,
               status: "activo",
+              has_future_dismiss_scheduled: true,
+              future_dismiss_start_date: "2026-11-01",
               holiday_days: 0,
               administrative_days: 0,
               congress_days: 0,
@@ -114,10 +129,76 @@ describe("OfficialsProvider assignToGroup", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("group-id").textContent).toBe("0"));
+    expect(screen.getByTestId("future-dismiss").textContent).toBe("yes");
 
     fireEvent.click(screen.getByRole("button", { name: "Asignar" }));
 
     await waitFor(() => expect(screen.getByTestId("result").textContent).toBe("Binding not found"));
     expect(screen.getByTestId("group-id").textContent).toBe("0");
+    expect(screen.getByTestId("future-dismiss").textContent).toBe("yes");
+  });
+
+  it("limpia el estado local al quitar una baja futura", async () => {
+    fetchWithAuthMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: 1,
+              name: "Jorge Medrano",
+              title: "Enfermero",
+              rut: "12345678",
+              dv: "9",
+              law_code: "18834",
+              hours_per_week: 44,
+              group_id: null,
+              specialty_sis: "Urgencia",
+              lunch_time_minutes: 60,
+              status: "activo",
+              has_future_dismiss_scheduled: true,
+              future_dismiss_start_date: "2026-11-01",
+              holiday_days: 0,
+              administrative_days: 0,
+              congress_days: 0,
+              breastfeeding_time: 0,
+              created_at: "2026-04-07T00:00:00Z",
+              observations: "",
+              contracts: [],
+            },
+          ]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([{ id: 3, name: "Grupo A", count: 0 }]),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Baja futura eliminada correctamente",
+            status: "activo",
+            has_future_dismiss_scheduled: false,
+            future_dismiss_start_date: null,
+            active_status_label: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    render(
+      <OfficialsProvider>
+        <Consumer />
+      </OfficialsProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("future-dismiss").textContent).toBe("yes"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Quitar baja futura" }));
+
+    await waitFor(() => expect(screen.getByTestId("result").textContent).toBe("future-cleared"));
+    expect(screen.getByTestId("future-dismiss").textContent).toBe("no");
   });
 });

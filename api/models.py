@@ -54,6 +54,7 @@ class Funcionario(Base):
     contract_start_date = Column(DateTime, nullable=True)
     contract_end_date = Column(DateTime, nullable=True)
     status = Column(String, index=True, default="activo") # activo, licencia, inactivo
+    dismiss_start_date = Column(DateTime, nullable=True)
     is_active_roster = Column(Boolean, default=False, index=True)
     latency_hours = Column(Integer, default=0)
     break_minutes = Column(Integer, default=30)
@@ -215,6 +216,7 @@ class Programming(Base):
     dismiss_reason_id = Column(Integer, nullable=True, index=True)
     dismiss_suboption_id = Column(Integer, nullable=True, index=True)
     dismiss_partial_hours = Column(Integer, nullable=True)
+    dismiss_start_date = Column(DateTime, nullable=True)
 
     # Audit
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -280,6 +282,7 @@ class UserHiddenOfficial(Base):
     dismiss_reason_id = Column(Integer, nullable=True, index=True)
     dismiss_suboption_id = Column(Integer, nullable=True, index=True)
     dismiss_partial_hours = Column(Integer, nullable=True)
+    dismiss_start_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
@@ -302,6 +305,7 @@ class OfficialAudit(Base):
     dismiss_suboption_id = Column(Integer, nullable=True, index=True)
     reason_category = Column(String, nullable=True)
     dismiss_partial_hours = Column(Integer, nullable=True)
+    dismiss_start_date = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -323,6 +327,7 @@ class DismissReason(Base):
     reason_category = Column(String, nullable=False, default="other")
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
+    requires_start_date = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

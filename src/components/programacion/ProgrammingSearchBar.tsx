@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Funcionario } from "../../context/OfficialsContextDefs";
+import { APP_ROUTES } from "../../lib/appPaths";
 
 interface ProgrammingSearchBarProps {
   searchQuery: string;
@@ -36,13 +37,13 @@ export function ProgrammingSearchBar({
               {filteredFuncionarios.map((funcionario) => (
                 <button
                   key={funcionario.id}
-                  onClick={() => {
-                    if (funcionario.groupId) {
-                      navigate(`/programacion/grupo/${funcionario.groupId}`);
-                    } else {
-                      navigate("/programacion/no-programados");
-                    }
-                  }}
+                    onClick={() => {
+                      if (funcionario.groupId) {
+                        navigate(APP_ROUTES.programmingGroup(funcionario.groupId));
+                      } else {
+                        navigate(APP_ROUTES.programmingUnscheduled);
+                      }
+                    }}
                   className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors border-b border-gray-50 dark:border-gray-700 last:border-none"
                 >
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${funcionario.color} shadow-sm`}>

@@ -22,6 +22,8 @@ interface RawFuncionario {
   status?: string;
   inactive_reason?: string | null;
   active_status_label?: string | null;
+  has_future_dismiss_scheduled?: boolean;
+  future_dismiss_start_date?: string | null;
   holiday_days?: number;
   administrative_days?: number;
   congress_days?: number;
@@ -77,6 +79,8 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     status: item.status || "activo", // Added status
     inactiveReason: item.inactive_reason || undefined,
     activeStatusLabel: item.active_status_label || undefined,
+    hasFutureDismissScheduled: item.has_future_dismiss_scheduled || false,
+    futureDismissStartDate: item.future_dismiss_start_date || undefined,
     
     holidayDays: item.holiday_days || 0,
     administrativeDays: item.administrative_days || 0,
@@ -215,7 +219,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const removeOfficial = async (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string; partialHours?: number }) => {
+  const removeOfficial = async (id: number, reason?: string | { reasonId?: number; reason?: string; suboptionId?: number; suboption?: string; partialHours?: number; startDate?: string }) => {
     if (!user) return;
     try {
       if (reason) {
@@ -227,6 +231,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
               suboption_id: reason.suboptionId,
               suboption: reason.suboption,
               partial_hours: reason.partialHours,
+              start_date: reason.startDate,
             };
 
         const response = await fetchWithAuth(buildApiUrl(`/funcionarios/${id}/dismiss`), {
@@ -242,13 +247,15 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
              if (result.action === "Hide") {
                   setOfficials(prev => prev.filter(o => o.id !== id));
               } else {
-                  setOfficials(prev => prev.map(o => o.id === id ? {
-                    ...o,
-                    status: result.status || 'inactivo',
-                    inactiveReason: result.status === 'inactivo' ? result.reason : undefined,
-                    activeStatusLabel: result.active_status_label || undefined,
-                  } : o));
-              }
+                   setOfficials(prev => prev.map(o => o.id === id ? {
+                     ...o,
+                     status: result.status || 'inactivo',
+                     inactiveReason: result.status === 'inactivo' ? result.reason : undefined,
+                     activeStatusLabel: result.active_status_label || undefined,
+                     hasFutureDismissScheduled: result.has_future_dismiss_scheduled || false,
+                     futureDismissStartDate: result.future_dismiss_start_date || undefined,
+                   } : o));
+               }
         } else {
             throw new Error(await parseErrorDetail(response, "No se pudo procesar la baja del funcionario."));
         }
@@ -279,7 +286,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
         });
         
         if (response.ok) {
-             updateOfficialLocally(id, { status: 'activo', inactiveReason: undefined, activeStatusLabel: undefined });
+             updateOfficialLocally(id, { status: 'activo', inactiveReason: undefined, activeStatusLabel: undefined, hasFutureDismissScheduled: false, futureDismissStartDate: undefined });
         }
     } catch (error) {
         console.error("Error activating official:", error);
@@ -298,10 +305,38 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       });
 
       if (response.ok) {
-        updateOfficialLocally(id, { status: 'activo', inactiveReason: undefined, activeStatusLabel: undefined });
+        updateOfficialLocally(id, { status: 'activo', inactiveReason: undefined, activeStatusLabel: undefined, hasFutureDismissScheduled: false, futureDismissStartDate: undefined });
       }
     } catch (error) {
       console.error("Error clearing partial commission:", error);
+      throw error;
+    }
+  }, [user, updateOfficialLocally]);
+
+  const clearFutureDismiss = useCallback(async (id: number) => {
+    if (!user) return;
+    try {
+      const response = await fetchWithAuth(buildApiUrl(`/funcionarios/${id}/clear-future-dismiss`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        updateOfficialLocally(id, {
+          status: 'activo',
+          inactiveReason: undefined,
+          activeStatusLabel: undefined,
+          hasFutureDismissScheduled: false,
+          futureDismissStartDate: undefined,
+        });
+        return;
+      }
+
+      throw new Error(await parseErrorDetail(response, 'No se pudo quitar la baja futura del funcionario.'));
+    } catch (error) {
+      console.error('Error clearing future dismiss:', error);
       throw error;
     }
   }, [user, updateOfficialLocally]);
@@ -393,6 +428,7 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
       removeOfficial,
       activateOfficial,
       clearPartialCommission,
+      clearFutureDismiss,
       updateOfficialLocally,
       searchOfficials,
       hrDatabase: officials, 

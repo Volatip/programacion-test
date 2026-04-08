@@ -1,6 +1,6 @@
 import asyncio
 import io
-from datetime import datetime
+from datetime import date, datetime
 
 import pandas as pd
 import pytest
@@ -1391,7 +1391,7 @@ def test_dismiss_funcionario_requires_suboption_and_records_configured_reason(db
 
     response = funcionarios_router.dismiss_funcionario(
         funcionario_id=funcionario.id,
-        payload=schemas.DismissSelectionRequest(reason_id=commission_reason.id, suboption_id=total_suboption.id),
+        payload=schemas.DismissSelectionRequest(reason_id=commission_reason.id, suboption_id=total_suboption.id, start_date=date(2026, 6, 1)),
         db=db_session,
         current_user=user,
     )
@@ -1405,6 +1405,256 @@ def test_dismiss_funcionario_requires_suboption_and_records_configured_reason(db
     assert audit.reason == "Comisión de Servicio - Total"
     assert audit.suboption == "Total"
     assert audit.reason_category == "mobility"
+
+
+def test_dismiss_funcionario_requires_start_date_when_reason_configuration_demands_it(db_session) -> None:
+    user = make_user(user_id=61, role="user")
+    period = make_period(name="2027-07", month=7, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Paula Fecha",
+        title="Enfermero",
+        rut="76000010",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    renuncia = db_session.query(models.DismissReason).filter_by(system_key="renuncia").one()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.dismiss_funcionario(
+            funcionario_id=funcionario.id,
+            payload=schemas.DismissSelectionRequest(reason_id=renuncia.id),
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "fecha de inicio" in str(exc_info.value.detail).lower()
+
+
+def test_dismiss_funcionario_allows_missing_start_date_when_reason_does_not_require_it(db_session) -> None:
+    user = make_user(user_id=62, role="user")
+    period = make_period(name="2027-08", month=8, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Paula Error",
+        title="Enfermero",
+        rut="76000011",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    agregado_error = db_session.query(models.DismissReason).filter_by(system_key="agregado-error").one()
+    response = funcionarios_router.dismiss_funcionario(
+        funcionario_id=funcionario.id,
+        payload=schemas.DismissSelectionRequest(reason_id=agregado_error.id, user_id=user.id),
+        db=db_session,
+        current_user=user,
+    )
+
+    hidden = db_session.query(models.UserHiddenOfficial).filter_by(user_id=user.id, funcionario_rut=funcionario.rut).one()
+
+    assert response["action"] == "Hide"
+    assert hidden.dismiss_start_date is None
+
+
+def test_dismiss_funcionario_sets_inactive_when_start_date_is_before_or_within_period(db_session) -> None:
+    user = make_user(user_id=63, role="user")
+    period = make_period(name="2027-09", month=9, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Paula Dentro",
+        title="Enfermero",
+        rut="76000012",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    renuncia = db_session.query(models.DismissReason).filter_by(system_key="renuncia").one()
+    response = funcionarios_router.dismiss_funcionario(
+        funcionario_id=funcionario.id,
+        payload=schemas.DismissSelectionRequest(reason_id=renuncia.id, start_date=date(2026, 9, 1)),
+        db=db_session,
+        current_user=user,
+    )
+
+    db_session.refresh(funcionario)
+    audit = db_session.query(models.OfficialAudit).filter_by(funcionario_id=funcionario.id, action="Dismiss").order_by(models.OfficialAudit.id.desc()).first()
+
+    assert response["status"] == "inactivo"
+    assert funcionario.status == "inactivo"
+    assert funcionario.dismiss_start_date == datetime(2026, 9, 1)
+    assert audit is not None
+    assert audit.dismiss_start_date == datetime(2026, 9, 1)
+
+
+def test_dismiss_funcionario_keeps_active_when_start_date_is_after_period_end(db_session) -> None:
+    user = make_user(user_id=64, role="user")
+    period = make_period(name="2027-10", month=10, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Paula Futuro",
+        title="Enfermero",
+        rut="76000013",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    renuncia = db_session.query(models.DismissReason).filter_by(system_key="renuncia").one()
+    response = funcionarios_router.dismiss_funcionario(
+        funcionario_id=funcionario.id,
+        payload=schemas.DismissSelectionRequest(reason_id=renuncia.id, start_date=date(2026, 11, 1)),
+        db=db_session,
+        current_user=user,
+    )
+
+    db_session.refresh(funcionario)
+
+    assert response["status"] == "activo"
+    assert funcionario.status == "activo"
+    assert funcionario.dismiss_start_date == datetime(2026, 11, 1)
+
+
+def test_clear_future_dismiss_removes_future_programming_metadata_and_keeps_official_active(db_session) -> None:
+    user = make_user(user_id=65, role="user")
+    period = make_period(name="2027-11", month=11, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+    ensure_default_dismiss_reasons(db_session)
+
+    funcionario = models.Funcionario(
+        name="Paula Reversa",
+        title="Enfermero",
+        rut="76000014",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        dismiss_start_date=datetime(2026, 12, 1),
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+
+    renuncia = db_session.query(models.DismissReason).filter_by(system_key="renuncia").one()
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        version=2,
+        status="borrador",
+        assigned_status="Renuncia",
+        dismiss_reason_id=renuncia.id,
+        dismiss_start_date=datetime(2026, 12, 1),
+        prais=False,
+        created_by_id=user.id,
+        updated_by_id=user.id,
+    )
+    db_session.add(programming)
+    db_session.add(models.OfficialAudit(
+        funcionario_id=funcionario.id,
+        funcionario_name=funcionario.name,
+        rut=funcionario.rut,
+        period_id=period.id,
+        user_id=user.id,
+        action="Dismiss",
+        reason="Renuncia",
+        dismiss_reason_id=renuncia.id,
+        dismiss_start_date=datetime(2026, 12, 1),
+    ))
+    db_session.commit()
+
+    response = funcionarios_router.clear_future_dismiss(
+        funcionario_id=funcionario.id,
+        payload=None,
+        db=db_session,
+        current_user=user,
+    )
+
+    db_session.refresh(funcionario)
+    db_session.refresh(programming)
+    audit = db_session.query(models.OfficialAudit).filter_by(funcionario_id=funcionario.id, action="Clear Future Dismiss").order_by(models.OfficialAudit.id.desc()).first()
+
+    assert response["status"] == "activo"
+    assert response["has_future_dismiss_scheduled"] is False
+    assert funcionario.status == "activo"
+    assert funcionario.dismiss_start_date is None
+    assert programming.dismiss_reason_id is None
+    assert programming.dismiss_suboption_id is None
+    assert programming.dismiss_start_date is None
+    assert programming.assigned_status == "Activo"
+    assert programming.version == 3
+    assert audit is not None
+    assert audit.reason == "Renuncia"
+
+
+def test_clear_future_dismiss_rejects_effective_dismisses(db_session) -> None:
+    user = make_user(user_id=66, role="user")
+    period = make_period(name="2027-12", month=12, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="Paula Efectiva",
+        title="Enfermero",
+        rut="76000015",
+        dv="K",
+        period_id=period.id,
+        status="inactivo",
+        dismiss_start_date=datetime(2026, 12, 1),
+        is_active_roster=True,
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.clear_future_dismiss(
+            funcionario_id=funcionario.id,
+            payload=None,
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "El funcionario no tiene una baja futura programada para quitar."
 
 
 def test_activate_funcionario_only_reactivates_same_period_contracts(db_session) -> None:
@@ -1484,6 +1734,7 @@ def test_dismiss_funcionario_partial_commission_creates_programming_activity_and
             reason_id=commission_reason.id,
             suboption_id=partial_suboption.id,
             partial_hours=6,
+            start_date=date(2026, 5, 1),
         ),
         db=db_session,
         current_user=user,
@@ -1615,6 +1866,7 @@ def test_dismiss_funcionario_partial_commission_requires_valid_base_programming(
                 reason_id=commission_reason.id,
                 suboption_id=partial_suboption.id,
                 partial_hours=6,
+                start_date=date(2026, 8, 1),
             ),
             db=db_session,
             current_user=user,

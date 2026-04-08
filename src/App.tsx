@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppProviders } from "./components/AppProviders";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Layout } from "./components/layout/Layout";
+import { APP_BASE_PATH, APP_ROUTES } from "./lib/appPaths";
 import Home from "./pages/Home";
 import { Funcionarios } from "./pages/Funcionarios";
 import { Login } from "./pages/Login";
@@ -25,34 +26,34 @@ function lazyPage(element: ReactNode) {
 function App() {
   return (
     <AppProviders>
-      <BrowserRouter basename="/programacion">
+      <BrowserRouter basename={APP_BASE_PATH || undefined}>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path={APP_ROUTES.login} element={<Login />} />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
               <Route element={<ProtectedRoute allowedRoles={["admin", "medical_coordinator", "non_medical_coordinator", "supervisor", "user"]} />}>
-                <Route path="/" element={<Home />} />
+                <Route path={APP_ROUTES.home} element={<Home />} />
               </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-                <Route path="/usuarios" element={lazyPage(<Users />)} />
-                <Route path="/bajas" element={lazyPage(<Bajas />)} />
-                <Route path="/admin/ayudas-contextuales" element={lazyPage(<ContextualHelpAdmin />)} />
-                <Route path="/rrhh" element={lazyPage(<RRHH />)} />
-                <Route path="/carga" element={lazyPage(<Carga />)} />
+                <Route path={APP_ROUTES.users} element={lazyPage(<Users />)} />
+                <Route path={APP_ROUTES.bajas} element={lazyPage(<Bajas />)} />
+                <Route path={APP_ROUTES.contextualHelpAdmin} element={lazyPage(<ContextualHelpAdmin />)} />
+                <Route path={APP_ROUTES.rrhh} element={lazyPage(<RRHH />)} />
+                <Route path={APP_ROUTES.carga} element={lazyPage(<Carga />)} />
               </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-                <Route path="/periodos" element={<Periodos />} />
+                <Route path={APP_ROUTES.periods} element={<Periodos />} />
               </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin", "medical_coordinator", "non_medical_coordinator", "supervisor", "user"]} />}>
-                <Route path="/funcionarios" element={<Funcionarios />} />
+                <Route path={APP_ROUTES.officials} element={<Funcionarios />} />
                 <Route element={<ProtectedRoute allowedRoles={["admin", "supervisor"]} />}>
-                  <Route path="/general" element={lazyPage(<General />)} />
+                  <Route path={APP_ROUTES.general} element={lazyPage(<General />)} />
                 </Route>
-                <Route path="/programacion" element={lazyPage(<Programacion />)} />
-                <Route path="/programacion/grupo/:groupId" element={lazyPage(<ProgramacionGrupo />)} />
-                <Route path="/programacion/programados" element={lazyPage(<ProgramacionLista type="scheduled" />)} />
-                <Route path="/programacion/no-programados" element={lazyPage(<ProgramacionLista type="unscheduled" />)} />
+                <Route path={APP_ROUTES.programming} element={lazyPage(<Programacion />)} />
+                <Route path={APP_ROUTES.programmingGroupPattern} element={lazyPage(<ProgramacionGrupo />)} />
+                <Route path={APP_ROUTES.programmingScheduled} element={lazyPage(<ProgramacionLista type="scheduled" />)} />
+                <Route path={APP_ROUTES.programmingUnscheduled} element={lazyPage(<ProgramacionLista type="unscheduled" />)} />
               </Route>
             </Route>
           </Route>

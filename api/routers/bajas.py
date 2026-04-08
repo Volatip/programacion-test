@@ -15,15 +15,18 @@ def serialize_reason(reason: models.DismissReason) -> schemas.DismissReasonRespo
     suboptions = sorted(reason.suboptions, key=lambda item: (item.sort_order, item.name.lower()))
     return schemas.DismissReasonResponse(
         id=reason.id,
+        system_key=reason.system_key,
         name=reason.name,
         description=reason.description or "",
         action_type=reason.action_type,
         reason_category=reason.reason_category,
         sort_order=reason.sort_order,
         is_active=reason.is_active,
+        requires_start_date=reason.requires_start_date,
         suboptions=[
             schemas.DismissReasonSuboptionResponse(
                 id=suboption.id,
+                system_key=suboption.system_key,
                 name=suboption.name,
                 description=suboption.description or "",
                 sort_order=suboption.sort_order,
@@ -54,15 +57,18 @@ def create_dismiss_reason(
     PermissionChecker.check_can_manage_dismiss_reasons(current_user)
 
     reason = models.DismissReason(
+        system_key=payload.system_key,
         name=payload.name.strip(),
         description=payload.description.strip(),
         action_type=payload.action_type,
         reason_category=payload.reason_category,
         sort_order=payload.sort_order,
         is_active=payload.is_active,
+        requires_start_date=payload.requires_start_date,
     )
     reason.suboptions = [
         models.DismissReasonSuboption(
+            system_key=suboption.system_key,
             name=suboption.name.strip(),
             description=suboption.description.strip(),
             sort_order=suboption.sort_order,
@@ -140,6 +146,7 @@ def create_dismiss_suboption(
 
     db.add(models.DismissReasonSuboption(
         reason_id=reason.id,
+        system_key=payload.system_key,
         name=payload.name.strip(),
         description=payload.description.strip(),
         sort_order=payload.sort_order,

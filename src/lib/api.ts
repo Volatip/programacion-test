@@ -1,23 +1,19 @@
-const LOCAL_FRONTEND_PORTS = new Set(["3000", "5173", "5174", "5175", "5176"]);
+import {
+  APP_BASE_PATH,
+  APP_ROUTES,
+  buildAppPath,
+  getAppMountPathFromApiBasePath,
+  isLocalDevFrontend,
+  isLocalHostname,
+  joinAppPath,
+} from "./appPaths";
 
-function isLocalHostname(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-}
-
-function isLocalDevFrontend(): boolean {
+function isLocalFrontendRuntime(): boolean {
   if (typeof window === "undefined") {
     return false;
   }
 
-  return Boolean(import.meta.env.DEV) || LOCAL_FRONTEND_PORTS.has(window.location.port || "");
-}
-
-function getDefaultAppBasePath(): string {
-  if (typeof window === "undefined") {
-    return "/programacion";
-  }
-
-  return isLocalDevFrontend() ? "" : "/programacion";
+  return isLocalDevFrontend(window.location, import.meta.env.DEV);
 }
 
 function getDefaultApiOrigin(): string {
@@ -28,7 +24,7 @@ function getDefaultApiOrigin(): string {
   const protocol = window.location.protocol === "https:" ? "https:" : "http:";
   const hostname = window.location.hostname || "localhost";
 
-  if (isLocalHostname(hostname) && isLocalDevFrontend()) {
+  if (isLocalHostname(hostname) && isLocalFrontendRuntime()) {
     return `${protocol}//${hostname}:8000`;
   }
 
@@ -36,30 +32,24 @@ function getDefaultApiOrigin(): string {
 }
 
 function getDefaultApiBasePath(): string {
-  return `${getDefaultAppBasePath()}/api`;
-}
-
-function getAppMountPathFromApiBasePath(apiBasePath: string): string {
-  if (apiBasePath === "/api") {
-    return "";
+  if (typeof window !== "undefined" && isLocalFrontendRuntime()) {
+    return "/api";
   }
 
-  return apiBasePath.endsWith("/api") ? apiBasePath.slice(0, -4) : apiBasePath;
+  return joinAppPath(APP_BASE_PATH, "/api");
 }
 
 const DEFAULT_API_ORIGIN = getDefaultApiOrigin();
 const DEFAULT_API_BASE_PATH = getDefaultApiBasePath();
-const DEFAULT_APP_BASE_PATH = getAppMountPathFromApiBasePath(DEFAULT_API_BASE_PATH);
 const rawApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
 const rawApiBasePath = import.meta.env.VITE_API_BASE_PATH?.trim();
 const rawWsOrigin = import.meta.env.VITE_WS_ORIGIN?.trim();
 
 export const API_ORIGIN = rawApiOrigin || DEFAULT_API_ORIGIN;
 export const API_BASE_PATH = rawApiBasePath || DEFAULT_API_BASE_PATH;
-export const APP_BASE_PATH = getAppMountPathFromApiBasePath(API_BASE_PATH);
 export const API_URL = `${API_ORIGIN}${API_BASE_PATH}`;
 export const WS_ORIGIN =
-  rawWsOrigin || `${API_ORIGIN}${APP_BASE_PATH || DEFAULT_APP_BASE_PATH}`.replace(/^http/i, (protocol) => (protocol.toLowerCase() === "https" ? "wss" : "ws"));
+  rawWsOrigin || `${API_ORIGIN}${getAppMountPathFromApiBasePath(API_BASE_PATH)}`.replace(/^http/i, (protocol) => (protocol.toLowerCase() === "https" ? "wss" : "ws"));
 
 export function buildApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
@@ -85,6 +75,27 @@ export function buildWsUrl(path: string): string {
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${WS_ORIGIN}${normalizedPath}`;
+}
+
+export function redirectToLogin(locationRef: Pick<Location, "href"> | null = typeof window === "undefined" ? null : window.location): void {
+  if (!locationRef) {
+    return;
+  }
+
+  const targetPath = buildAppPath(APP_ROUTES.login);
+
+  if (import.meta.env.MODE === "test" && locationRef === window.location && typeof window !== "undefined") {
+    window.history.replaceState({}, "", targetPath);
+    return;
+  }
+
+  try {
+    locationRef.href = targetPath;
+  } catch {
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", targetPath);
+    }
+  }
 }
 
 export const SESSION_STORAGE_KEYS = {
@@ -283,7 +294,7 @@ export async function fetchWithAuth(path: string, options: RequestInit = {}): Pr
 
   if (response.status === 401) {
     clearSession();
-    window.location.href = "/login";
+    redirectToLogin();
     throw new Error("Session expired");
   }
 

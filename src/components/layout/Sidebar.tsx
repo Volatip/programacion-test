@@ -2,21 +2,22 @@ import { NavLink } from "react-router-dom";
 import { Home, Users, Briefcase, Calendar, FileSpreadsheet, Upload, History, Github, CircleHelp, TableProperties, UserMinus } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../context/AuthContext";
+import { APP_ROUTES, buildPublicAssetPath } from "../../lib/appPaths";
 
 export function Sidebar() {
   const { user } = useAuth();
 
   const navItems = [
-    { to: "/", icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
-    { to: "/usuarios", icon: Users, label: "Usuarios", roles: ['admin', 'administrador'] },
-    { to: "/bajas", icon: UserMinus, label: "Bajas", roles: ['admin', 'administrador'] },
-    { to: "/admin/ayudas-contextuales", icon: CircleHelp, label: "Ayudas", roles: ['admin', 'administrador'] },
-    { to: "/periodos", icon: History, label: "Periodos", roles: ['admin', 'administrador'] },
-    { to: "/rrhh", icon: FileSpreadsheet, label: "RRHH", roles: ['admin', 'administrador'] },
-    { to: "/carga", icon: Upload, label: "Carga", roles: ['admin', 'administrador'] },
-    { to: "/general", icon: TableProperties, label: "General", roles: ['admin', 'administrador', 'supervisor'] },
-    { to: "/funcionarios", icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
-    { to: "/programacion", icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
+    { to: APP_ROUTES.home, icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
+    { to: APP_ROUTES.users, icon: Users, label: "Usuarios", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.bajas, icon: UserMinus, label: "Bajas", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.contextualHelpAdmin, icon: CircleHelp, label: "Ayudas", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.periods, icon: History, label: "Periodos", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.rrhh, icon: FileSpreadsheet, label: "RRHH", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.carga, icon: Upload, label: "Carga", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.general, icon: TableProperties, label: "General", roles: ['admin', 'administrador', 'supervisor'] },
+    { to: APP_ROUTES.officials, icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
+    { to: APP_ROUTES.programming, icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
   ];
 
   const filteredNavItems = navItems.filter(item => 
@@ -26,7 +27,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 bg-white dark:bg-gray-800 h-screen fixed left-0 top-0 border-r border-gray-200 dark:border-gray-700 flex flex-col z-20 transition-colors duration-200">
       <div className="p-6 flex items-center gap-3">
-        <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
+        <img src={buildPublicAssetPath("logo.png")} alt="Logo" className="w-10 h-10 object-contain" />
         <div>
           <h1 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">
             Programación

@@ -21,6 +21,8 @@ interface FuncionariosModalsProps {
   setDismissSuboptionId: (value: number | null) => void;
   dismissPartialHours: string;
   setDismissPartialHours: (value: string) => void;
+  dismissStartDate: string;
+  setDismissStartDate: (value: string) => void;
   setShowConfirmHardDelete: (value: boolean) => void;
   setDismissError: (value: string) => void;
   dismissError: string;
@@ -57,6 +59,8 @@ export function FuncionariosModals({
   setDismissSuboptionId,
   dismissPartialHours,
   setDismissPartialHours,
+  dismissStartDate,
+  setDismissStartDate,
   setShowConfirmHardDelete,
   setDismissError,
   dismissError,
@@ -78,6 +82,7 @@ export function FuncionariosModals({
 }: FuncionariosModalsProps) {
   const selectedDismissSuboption = selectedDismissReason?.suboptions.find((suboption) => suboption.id === dismissSuboptionId) ?? null;
   const requiresPartialHours = isPartialCommissionSelection(selectedDismissReason, dismissSuboptionId);
+  const requiresDismissStartDate = Boolean(selectedDismissReason?.requires_start_date);
 
   const getReasonIcon = (reason: DismissReason) => {
     if (reason.action_type === "hide") return Trash2;
@@ -168,6 +173,7 @@ export function FuncionariosModals({
                       setDismissReasonId(item.id);
                       setDismissSuboptionId(null);
                       setDismissPartialHours("");
+                      setDismissStartDate("");
                       setShowConfirmHardDelete(false);
                       setDismissError("");
                     }}
@@ -220,7 +226,7 @@ export function FuncionariosModals({
                     type="button"
                     onClick={() => {
                       setDismissSuboptionId(suboption.id);
-                      if (suboption.name.trim().toLowerCase() !== "parcial") {
+                      if (!isPartialCommissionSelection(selectedDismissReason, suboption.id)) {
                         setDismissPartialHours("");
                       }
                       setDismissError("");
@@ -254,6 +260,25 @@ export function FuncionariosModals({
                 className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/30 px-4 py-3 text-sm text-gray-900 dark:text-white outline-none transition focus:ring-2 focus:ring-primary/20"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400">Solo se permiten números enteros mayores a 0.</p>
+            </div>
+          )}
+
+          {requiresDismissStartDate && (
+            <div className="space-y-2">
+              <label htmlFor="dismiss-start-date" className="block text-sm font-semibold text-gray-900 dark:text-white">
+                Fecha de inicio de la baja <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="dismiss-start-date"
+                type="date"
+                value={dismissStartDate}
+                onChange={(e) => {
+                  setDismissStartDate(e.target.value);
+                  setDismissError("");
+                }}
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/30 px-4 py-3 text-sm text-gray-900 dark:text-white outline-none transition focus:ring-2 focus:ring-primary/20"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">Se usa para determinar si el funcionario queda activo o inactivo en el período vigente.</p>
             </div>
           )}
 
@@ -291,10 +316,10 @@ export function FuncionariosModals({
             </button>
             <button
               onClick={handleConfirmDismiss}
-              disabled={isProcessingDismiss || !dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId) || (requiresPartialHours && !dismissPartialHours.trim())}
+              disabled={isProcessingDismiss || !dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId) || (requiresPartialHours && !dismissPartialHours.trim()) || (requiresDismissStartDate && !dismissStartDate)}
               className={`
                 px-6 py-2.5 text-white rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center gap-2 transform active:scale-95
-                ${!dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId) || (requiresPartialHours && !dismissPartialHours.trim())
+                ${!dismissReasonId || (Boolean(selectedDismissReason?.suboptions.length) && !dismissSuboptionId) || (requiresPartialHours && !dismissPartialHours.trim()) || (requiresDismissStartDate && !dismissStartDate)
                   ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed"
                   : showConfirmHardDelete
                     ? "bg-red-600 hover:bg-red-700 hover:shadow-red-200"

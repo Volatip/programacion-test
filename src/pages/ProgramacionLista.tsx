@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { useProgrammingClassification } from "../hooks/useProgrammingClassification";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { APP_ROUTES } from "../lib/appPaths";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 
@@ -81,7 +82,7 @@ export function ProgramacionLista({ type }: ProgramacionListaProps) {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => navigate('/programacion')}
+            onClick={() => navigate(APP_ROUTES.programming)}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
           >
             <ArrowLeft className="w-6 h-6 text-gray-500 dark:text-gray-400" />

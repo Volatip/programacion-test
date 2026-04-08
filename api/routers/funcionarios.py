@@ -8,7 +8,7 @@ import pandas as pd
 import io
 from api import models, schemas, database, auth
 from api.commission_service import apply_partial_commission_programming, clear_partial_commission_programming, ensure_partial_commission_base_programming, ensure_partial_commission_hours, is_partial_commission_selection
-from api.dismiss_reasons import HIDE_ACTION, resolve_dismiss_selection, resolve_reason_category
+from api.dismiss_reasons import HIDE_ACTION, normalize_dismiss_start_datetime, resolve_dismiss_selection, resolve_reason_category, validate_dismiss_start_date_requirement
 from api.query_bounds import normalize_limit, normalize_skip
 from api.permissions import MEDICAL_FUNCIONARIO_TITLE, PermissionChecker
 
@@ -521,6 +521,8 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
                 "status": contract.status, # Added status
                 "inactive_reason": inactive_reasons.get(contract.rut),
                 "active_status_label": None,
+                "has_partial_commission": False,
+                "future_dismiss_start_date": None,
                 
                 "is_active_roster": contract.is_active_roster, # Take from first contract
                 "is_scheduled": False,
@@ -539,7 +541,19 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
              grouped_people[key]["programming_updated_at"] = details["updated_at"]
              grouped_people[key]["total_scheduled_hours"] = details["scheduled_hours"]
              if details.get("dismiss_partial_hours") is not None and details.get("assigned_status"):
+                 grouped_people[key]["has_partial_commission"] = True
                  grouped_people[key]["active_status_label"] = details["assigned_status"]
+
+        is_future_dismiss = (
+            contract.status == "activo"
+            and contract.dismiss_start_date is not None
+            and contract.period is not None
+            and contract.dismiss_start_date > contract.period.end_date
+        )
+        if is_future_dismiss:
+            current_future_date = grouped_people[key]["future_dismiss_start_date"]
+            if current_future_date is None or contract.dismiss_start_date > current_future_date:
+                grouped_people[key]["future_dismiss_start_date"] = contract.dismiss_start_date
 
         # Accumulate values
         grouped_people[key]["law_codes"].append(contract.law_code)
@@ -591,6 +605,8 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
             "status": person["status"], # Added status
             "inactive_reason": person["inactive_reason"],
             "active_status_label": person["active_status_label"],
+            "has_future_dismiss_scheduled": bool(person["future_dismiss_start_date"]) and not person["has_partial_commission"],
+            "future_dismiss_start_date": person["future_dismiss_start_date"] if not person["has_partial_commission"] else None,
             "observations": obs_str, # Added observations
             
             "holiday_days": person["holiday_days"],
@@ -652,6 +668,72 @@ def get_programmed_details(db: Session, period_id: int):
             "dismiss_partial_hours": row.dismiss_partial_hours,
         }
     return details
+
+
+def is_future_dismiss_scheduled(funcionario: models.Funcionario) -> bool:
+    return (
+        funcionario.status == "activo"
+        and funcionario.dismiss_start_date is not None
+        and funcionario.period is not None
+        and funcionario.dismiss_start_date > funcionario.period.end_date
+    )
+
+
+def get_related_period_contracts(db: Session, funcionario: models.Funcionario) -> list[models.Funcionario]:
+    if funcionario.rut:
+        return db.query(models.Funcionario).filter(
+            models.Funcionario.rut == funcionario.rut,
+            models.Funcionario.period_id == funcionario.period_id,
+        ).all()
+    return [funcionario]
+
+
+def clear_future_dismiss_programming(programming: models.Programming | None, *, user_id: int | None) -> None:
+    if programming is None:
+        return
+
+    had_changes = any(
+        value is not None
+        for value in (
+            programming.dismiss_reason_id,
+            programming.dismiss_suboption_id,
+            programming.dismiss_start_date,
+        )
+    ) or (programming.dismiss_partial_hours is None and (programming.assigned_status or "").strip() not in {"", "Activo", "activo"})
+
+    programming.dismiss_reason_id = None
+    programming.dismiss_suboption_id = None
+    programming.dismiss_start_date = None
+
+    if programming.dismiss_partial_hours is None and (programming.assigned_status or "").strip() not in {"", "Activo", "activo"}:
+        programming.assigned_status = "Activo"
+
+    programming.updated_by_id = user_id
+    if had_changes:
+        programming.version = (programming.version or 0) + 1
+
+
+def get_latest_future_dismiss_audit(db: Session, funcionario: models.Funcionario) -> models.OfficialAudit | None:
+    query = db.query(models.OfficialAudit).filter(
+        models.OfficialAudit.period_id == funcionario.period_id,
+        models.OfficialAudit.action == "Dismiss",
+        models.OfficialAudit.dismiss_start_date.isnot(None),
+    )
+
+    if funcionario.rut:
+        query = query.filter(models.OfficialAudit.rut == funcionario.rut)
+    else:
+        query = query.filter(models.OfficialAudit.funcionario_id == funcionario.id)
+
+    audit = query.order_by(models.OfficialAudit.id.desc()).first()
+    if (
+        audit is None
+        or audit.dismiss_start_date is None
+        or funcionario.period is None
+        or audit.dismiss_start_date <= funcionario.period.end_date
+    ):
+        return None
+    return audit
 
 @router.get("", response_model=List[schemas.FuncionarioConsolidated])
 def read_funcionarios(
@@ -1051,10 +1133,12 @@ def dismiss_funcionario(
     PermissionChecker.require_read_only_access(current_user)
     user_id = PermissionChecker.resolve_user_scope(current_user, payload_dict.get("user_id")) # Who performed the action
     selection = resolve_dismiss_selection(db, payload_dict)
+    validate_dismiss_start_date_requirement(selection.reason, payload_dict.get("start_date"))
     partial_hours = ensure_partial_commission_hours(selection.reason, selection.suboption, payload_dict.get("partial_hours"))
     keeps_official_active = is_partial_commission_selection(selection.reason, selection.suboption)
     reason_label = selection.display_label
     reason_category = resolve_reason_category(selection.reason.reason_category, reason_label)
+    dismiss_start_date = normalize_dismiss_start_datetime(payload_dict.get("start_date"))
         
     funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
     if not funcionario:
@@ -1065,6 +1149,10 @@ def dismiss_funcionario(
     # Determine Action
     if selection.reason.action_type != HIDE_ACTION:
         if not keeps_official_active:
+            should_deactivate = True
+            if dismiss_start_date is not None and funcionario.period is not None:
+                should_deactivate = dismiss_start_date <= funcionario.period.end_date
+
             # Soft Delete / Deactivate
             # Update all contracts with same RUT? 
             # Usually dismiss applies to the person, so all contracts with that RUT should be updated.
@@ -1074,9 +1162,13 @@ def dismiss_funcionario(
                     models.Funcionario.period_id == funcionario.period_id,
                 ).all()
                 for c in contracts:
-                    c.status = "inactivo"
+                    c.dismiss_start_date = dismiss_start_date
+                    c.status = "inactivo" if should_deactivate else "activo"
             else:
-                funcionario.status = "inactivo"
+                funcionario.dismiss_start_date = dismiss_start_date
+                funcionario.status = "inactivo" if should_deactivate else "activo"
+        else:
+            funcionario.dismiss_start_date = dismiss_start_date
             
         action = "Dismiss"
         
@@ -1103,6 +1195,7 @@ def dismiss_funcionario(
                     dismiss_reason_id=selection.reason.id,
                     dismiss_suboption_id=selection.suboption.id if selection.suboption else None,
                     dismiss_partial_hours=partial_hours,
+                    dismiss_start_date=dismiss_start_date,
                 )
                 db.add(hidden)
         
@@ -1146,15 +1239,16 @@ def dismiss_funcionario(
         dismiss_suboption_id=selection.suboption.id if selection.suboption else None,
         reason_category=reason_category,
         dismiss_partial_hours=partial_hours,
+        dismiss_start_date=dismiss_start_date,
     )
     db.add(audit)
 
     if partial_hours is not None and selection.suboption is not None:
-        existing_programming = db.query(models.Programming).filter(
+        programming = db.query(models.Programming).filter(
             models.Programming.funcionario_id == funcionario.id,
             models.Programming.period_id == funcionario.period_id,
         ).first()
-        ensure_partial_commission_base_programming(existing_programming, funcionario)
+        ensure_partial_commission_base_programming(programming, funcionario)
         apply_partial_commission_programming(
             db,
             funcionario=funcionario,
@@ -1163,6 +1257,19 @@ def dismiss_funcionario(
             suboption=selection.suboption,
             partial_hours=partial_hours,
         )
+        programming = db.query(models.Programming).filter(
+            models.Programming.funcionario_id == funcionario.id,
+            models.Programming.period_id == funcionario.period_id,
+        ).first()
+        if programming is not None:
+            programming.dismiss_start_date = dismiss_start_date
+    elif selection.reason.action_type != HIDE_ACTION:
+        programming = db.query(models.Programming).filter(
+            models.Programming.funcionario_id == funcionario.id,
+            models.Programming.period_id == funcionario.period_id,
+        ).first()
+        if programming is not None:
+            programming.dismiss_start_date = dismiss_start_date
     
     try:
         db.commit()
@@ -1172,6 +1279,13 @@ def dismiss_funcionario(
             status_code=409,
             detail="Ya existe un ocultamiento registrado para ese usuario y funcionario.",
         )
+
+    has_future_dismiss_scheduled = (
+        action == "Dismiss"
+        and dismiss_start_date is not None
+        and not keeps_official_active
+        and funcionario.status == "activo"
+    )
     
     return {
         "message": f"Funcionario processed: {action}",
@@ -1181,7 +1295,70 @@ def dismiss_funcionario(
         "reason_id": selection.reason.id,
         "suboption_id": selection.suboption.id if selection.suboption else None,
         "partial_hours": partial_hours,
+        "start_date": dismiss_start_date.date().isoformat() if dismiss_start_date is not None else None,
         "active_status_label": reason_label if keeps_official_active else None,
+        "has_future_dismiss_scheduled": has_future_dismiss_scheduled,
+        "future_dismiss_start_date": dismiss_start_date.date().isoformat() if has_future_dismiss_scheduled else None,
+    }
+
+
+@router.post("/{funcionario_id}/clear-future-dismiss")
+def clear_future_dismiss(
+    funcionario_id: int,
+    payload: Optional[dict] = Body(default=None),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user)
+):
+    payload = payload or {}
+    PermissionChecker.require_read_only_access(current_user)
+    user_id = PermissionChecker.resolve_user_scope(current_user, payload.get("user_id"))
+
+    funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
+    if not funcionario:
+        raise HTTPException(status_code=404, detail="Funcionario not found")
+
+    PermissionChecker.check_can_access_funcionario(current_user, funcionario_id, db)
+
+    if not is_future_dismiss_scheduled(funcionario):
+        raise HTTPException(status_code=400, detail="El funcionario no tiene una baja futura programada para quitar.")
+
+    contracts = get_related_period_contracts(db, funcionario)
+    for contract in contracts:
+        contract.status = "activo"
+        contract.dismiss_start_date = None
+
+    latest_audit = get_latest_future_dismiss_audit(db, funcionario)
+
+    contract_ids = [contract.id for contract in contracts]
+    programmings = db.query(models.Programming).filter(
+        models.Programming.funcionario_id.in_(contract_ids),
+        models.Programming.period_id == funcionario.period_id,
+    ).all()
+    for programming in programmings:
+        clear_future_dismiss_programming(programming, user_id=user_id)
+
+    audit = models.OfficialAudit(
+        funcionario_id=funcionario.id,
+        funcionario_name=funcionario.name,
+        rut=funcionario.rut,
+        period_id=funcionario.period_id,
+        user_id=user_id,
+        action="Clear Future Dismiss",
+        reason=latest_audit.reason if latest_audit is not None else "Quitar baja futura",
+        suboption=latest_audit.suboption if latest_audit is not None else None,
+        dismiss_reason_id=latest_audit.dismiss_reason_id if latest_audit is not None else None,
+        dismiss_suboption_id=latest_audit.dismiss_suboption_id if latest_audit is not None else None,
+    )
+    db.add(audit)
+
+    db.commit()
+
+    return {
+        "message": "Baja futura eliminada correctamente",
+        "status": "activo",
+        "has_future_dismiss_scheduled": False,
+        "future_dismiss_start_date": None,
+        "active_status_label": None,
     }
 
 @router.post("/{funcionario_id}/activate")
@@ -1206,6 +1383,7 @@ def activate_funcionario(
     # Update all contracts with same RUT unless we are only clearing a partial commission
     if clear_partial_commission:
         funcionario.status = "activo"
+        funcionario.dismiss_start_date = None
     elif funcionario.rut:
         contracts = db.query(models.Funcionario).filter(
             models.Funcionario.rut == funcionario.rut,
@@ -1213,8 +1391,10 @@ def activate_funcionario(
         ).all()
         for c in contracts:
             c.status = "activo"
+            c.dismiss_start_date = None
     else:
         funcionario.status = "activo"
+        funcionario.dismiss_start_date = None
 
     programming = db.query(models.Programming).filter(
         models.Programming.funcionario_id == funcionario_id,

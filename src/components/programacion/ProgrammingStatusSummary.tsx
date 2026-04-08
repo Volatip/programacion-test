@@ -1,6 +1,7 @@
 import { Calendar, ChevronRight, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Funcionario } from "../../context/OfficialsContextDefs";
+import { APP_ROUTES } from "../../lib/appPaths";
 
 interface ProgrammingStatusSummaryProps {
   scheduledFuncionarios: Funcionario[];
@@ -18,7 +19,7 @@ export function ProgrammingStatusSummary({
       <h3 className="text-lg font-bold text-gray-900 dark:text-white px-1">Estado General</h3>
 
       <div
-        onClick={() => navigate("/programacion/programados")}
+        onClick={() => navigate(APP_ROUTES.programmingScheduled)}
         className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-6 cursor-pointer group hover:shadow-lg hover:border-green-200 dark:hover:border-green-800 transition-all duration-300 relative overflow-hidden"
       >
         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
@@ -44,7 +45,7 @@ export function ProgrammingStatusSummary({
       </div>
 
       <div
-        onClick={() => navigate("/programacion/no-programados")}
+        onClick={() => navigate(APP_ROUTES.programmingUnscheduled)}
         className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm p-6 cursor-pointer group hover:shadow-lg hover:border-red-200 dark:hover:border-red-800 transition-all duration-300 relative overflow-hidden"
       >
         <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">

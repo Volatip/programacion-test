@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { APP_ROUTES } from "../lib/appPaths";
 import { isAdminRole } from "../lib/userRoles";
 
 interface ProtectedRouteProps {
@@ -10,7 +11,7 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuth();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={APP_ROUTES.login} replace />;
   }
 
   if (allowedRoles?.length) {

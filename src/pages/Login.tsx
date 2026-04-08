@@ -5,11 +5,11 @@ import { Lock, Eye, EyeOff, Github, Sun, Moon } from 'lucide-react';
 import { formatRut, validateRut } from '../lib/utils';
 import { Modal } from '../components/ui/Modal';
 import { useTheme } from '../hooks/useTheme';
-import { isSupervisorRole } from '../lib/userRoles';
 import { getStoredSession } from '../lib/api';
+import { APP_ROUTES, buildPublicAssetPath } from '../lib/appPaths';
 
-const LOGO_URL = `${import.meta.env.BASE_URL}logo.png`;
-const BACKGROUND_URL = `${import.meta.env.BASE_URL}fondo.jpg`;
+const LOGO_URL = buildPublicAssetPath('logo.png');
+const BACKGROUND_URL = buildPublicAssetPath('fondo.jpg');
 
 export function Login() {
   const [rut, setRut] = useState('');
@@ -42,7 +42,7 @@ export function Login() {
     try {
       await login(rut, password);
       const storedUser = JSON.parse(getStoredSession().user || 'null') as { role?: string } | null;
-      navigate('/');
+      navigate(APP_ROUTES.home);
     } catch (err) {
       setError('Credenciales inválidas. Por favor intente nuevamente.');
       console.error(err);

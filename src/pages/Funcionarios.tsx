@@ -25,7 +25,7 @@ const normalizeRutInput = (value: string) => {
 export function Funcionarios() {
   const { user } = useAuth();
   const { isSupervisor, isScopeReady } = useSupervisorScope();
-  const { officials, addOfficial, removeOfficial, activateOfficial, clearPartialCommission, searchOfficials, refreshOfficials } = useOfficials();
+  const { officials, addOfficial, removeOfficial, activateOfficial, clearPartialCommission, clearFutureDismiss, searchOfficials, refreshOfficials } = useOfficials();
   const { removeCachedProgramming } = useProgrammingCache();
   const { isReadOnly } = usePeriods();
   const canManageOfficials = !isSupervisorRole(user?.role);
@@ -57,6 +57,7 @@ export function Funcionarios() {
   const [dismissReasonId, setDismissReasonId] = useState<number | null>(null);
   const [dismissSuboptionId, setDismissSuboptionId] = useState<number | null>(null);
   const [dismissPartialHours, setDismissPartialHours] = useState("");
+  const [dismissStartDate, setDismissStartDate] = useState("");
   const [dismissError, setDismissError] = useState("");
   const [isProcessingDismiss, setIsProcessingDismiss] = useState(false);
   const [showConfirmHardDelete, setShowConfirmHardDelete] = useState(false);
@@ -129,6 +130,7 @@ export function Funcionarios() {
   const selectedOfficial = officials.find((official) => official.id === selectedOfficialId) ?? null;
   const requiresSuboption = Boolean(selectedDismissReason && selectedDismissReason.suboptions.length > 0);
   const requiresPartialHours = isPartialCommissionSelection(selectedDismissReason, dismissSuboptionId);
+  const requiresDismissStartDate = Boolean(selectedDismissReason?.requires_start_date);
   const isHideReason = selectedDismissReason?.action_type === "hide";
 
   const handleConfirmActivate = async () => {
@@ -164,12 +166,23 @@ export function Funcionarios() {
     }
   };
 
+  const handleClearFutureDismiss = async (id: number) => {
+    try {
+      await clearFutureDismiss(id);
+      showToast("Baja futura eliminada correctamente", "success");
+    } catch (error) {
+      console.error("Error clearing future dismiss:", error);
+      showToast("Error al quitar la baja futura", "error");
+    }
+  };
+
   const handleInitiateDelete = (id: number) => {
     setSelectedOfficialId(id);
     setIsDismissModalOpen(true);
     setDismissReasonId(null);
     setDismissSuboptionId(null);
     setDismissPartialHours("");
+    setDismissStartDate("");
     setDismissError("");
     setShowConfirmHardDelete(false);
   };
@@ -187,6 +200,11 @@ export function Funcionarios() {
 
     if (requiresPartialHours && !dismissPartialHours.trim()) {
         setDismissError("Debe ingresar la cantidad de horas para la Comisión de Servicio Parcial.");
+        return;
+    }
+
+    if (requiresDismissStartDate && !dismissStartDate) {
+        setDismissError("Debe ingresar la fecha de inicio de la baja.");
         return;
     }
 
@@ -209,6 +227,7 @@ export function Funcionarios() {
           reasonId: selectedDismissReason.id,
           suboptionId: selectedDismissSuboption?.id,
           partialHours: dismissPartialHours.trim() ? Number(dismissPartialHours) : undefined,
+          startDate: dismissStartDate || undefined,
         });
 
         if (requiresPartialHours) {
@@ -352,6 +371,7 @@ export function Funcionarios() {
                canManageOfficials={canManageOfficials}
               getContractHoursDisplay={getContractHoursDisplay}
               onActivate={handleInitiateActivate}
+              onClearFutureDismiss={handleClearFutureDismiss}
               onClearPartialCommission={handleClearPartialCommission}
               onDelete={handleInitiateDelete}
             />
@@ -387,6 +407,8 @@ export function Funcionarios() {
           setDismissSuboptionId={setDismissSuboptionId}
           dismissPartialHours={dismissPartialHours}
           setDismissPartialHours={setDismissPartialHours}
+          dismissStartDate={dismissStartDate}
+          setDismissStartDate={setDismissStartDate}
           setShowConfirmHardDelete={setShowConfirmHardDelete}
           setDismissError={setDismissError}
           dismissError={dismissError}

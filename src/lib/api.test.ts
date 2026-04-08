@@ -121,4 +121,67 @@ describe('session hardening helpers', () => {
       headers: expect.not.objectContaining({ Authorization: expect.any(String) }),
     }));
   });
+
+  it('redirects expired sessions to login using the resolved app base path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchWithAuth('/users/me')).rejects.toThrow('Session expired');
+
+    expect(window.localStorage.getItem(SESSION_STORAGE_KEYS.user)).toBeNull();
+    expect(window.sessionStorage.getItem(SESSION_STORAGE_KEYS.token)).toBeNull();
+  });
+
+  it('builds auth redirects under /programacion when the app is mounted there', async () => {
+    vi.resetModules();
+    window.history.replaceState({}, '', '/programacion/login');
+
+    const { redirectToLogin } = await import('./api');
+    const locationRef = { href: '' };
+
+    redirectToLogin(locationRef);
+
+    expect(locationRef.href).toBe('/programacion/login');
+  });
+
+  it('keeps root-relative auth routes when the app runs locally without a base path', async () => {
+    vi.resetModules();
+    window.history.replaceState({}, '', '/login');
+
+    const { redirectToLogin } = await import('./api');
+    const { resolveAppBasePath, joinAppPath } = await import('./appPaths');
+    const locationRef = { href: '' };
+
+    redirectToLogin(locationRef);
+
+    expect(resolveAppBasePath({
+      location: {
+        hostname: 'localhost',
+        port: '5173',
+        pathname: '/login',
+      },
+      isDev: true,
+    })).toBe('');
+    expect(locationRef.href).toBe('/login');
+    expect(joinAppPath('', '/login')).toBe('/login');
+  });
+
+  it('builds app login redirects under /programacion when the app is mounted there', async () => {
+    vi.resetModules();
+    window.history.replaceState({}, '', '/programacion/login');
+
+    const { buildAppPath, APP_ROUTES } = await import('./appPaths');
+
+    expect(buildAppPath(APP_ROUTES.login)).toBe('/programacion/login');
+  });
+
+  it('keeps local api urls under /api even when the app is mounted under /programacion in local runtime', async () => {
+    vi.resetModules();
+    window.history.replaceState({}, '', '/programacion/login');
+
+    const { buildApiUrl } = await import('./api');
+
+    expect(buildApiUrl('/users/login')).toContain('http://localhost:8000/api/users/login');
+    expect(buildApiUrl('/users/login')).not.toContain('/programacion/api/users/login');
+  });
 });

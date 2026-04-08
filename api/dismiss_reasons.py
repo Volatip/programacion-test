@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, time
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
@@ -9,6 +10,10 @@ from . import models
 
 DISMISS_ACTION = "dismiss"
 HIDE_ACTION = "hide"
+
+REASON_SYSTEM_KEY_COMMISSION_SERVICE = "comision-servicio"
+SUBOPTION_SYSTEM_KEY_TOTAL = "total"
+SUBOPTION_SYSTEM_KEY_PARTIAL = "parcial"
 
 REASON_CATEGORY_RESIGNATION = "resignation"
 REASON_CATEGORY_MOBILITY = "mobility"
@@ -22,6 +27,7 @@ DEFAULT_DISMISS_REASONS: list[dict[str, object]] = [
         "action_type": DISMISS_ACTION,
         "reason_category": REASON_CATEGORY_RESIGNATION,
         "sort_order": 10,
+        "requires_start_date": True,
         "suboptions": [],
     },
     {
@@ -31,18 +37,20 @@ DEFAULT_DISMISS_REASONS: list[dict[str, object]] = [
         "action_type": DISMISS_ACTION,
         "reason_category": REASON_CATEGORY_MOBILITY,
         "sort_order": 20,
+        "requires_start_date": True,
         "suboptions": [],
     },
     {
-        "system_key": "comision-servicio",
+        "system_key": REASON_SYSTEM_KEY_COMMISSION_SERVICE,
         "name": "Comisión de Servicio",
         "description": "Asignación temporal a otra unidad o servicio",
         "action_type": DISMISS_ACTION,
         "reason_category": REASON_CATEGORY_MOBILITY,
         "sort_order": 30,
+        "requires_start_date": True,
         "suboptions": [
-            {"system_key": "total", "name": "Total", "description": "Comisión completa", "sort_order": 10},
-            {"system_key": "parcial", "name": "Parcial", "description": "Comisión parcial", "sort_order": 20},
+            {"system_key": SUBOPTION_SYSTEM_KEY_TOTAL, "name": "Total", "description": "Comisión completa", "sort_order": 10},
+            {"system_key": SUBOPTION_SYSTEM_KEY_PARTIAL, "name": "Parcial", "description": "Comisión parcial", "sort_order": 20},
         ],
     },
     {
@@ -52,6 +60,7 @@ DEFAULT_DISMISS_REASONS: list[dict[str, object]] = [
         "action_type": DISMISS_ACTION,
         "reason_category": REASON_CATEGORY_MOBILITY,
         "sort_order": 40,
+        "requires_start_date": True,
         "suboptions": [],
     },
     {
@@ -61,6 +70,7 @@ DEFAULT_DISMISS_REASONS: list[dict[str, object]] = [
         "action_type": DISMISS_ACTION,
         "reason_category": REASON_CATEGORY_MOBILITY,
         "sort_order": 50,
+        "requires_start_date": True,
         "suboptions": [],
     },
     {
@@ -70,6 +80,7 @@ DEFAULT_DISMISS_REASONS: list[dict[str, object]] = [
         "action_type": HIDE_ACTION,
         "reason_category": REASON_CATEGORY_OTHER,
         "sort_order": 60,
+        "requires_start_date": False,
         "suboptions": [],
     },
 ]
@@ -132,10 +143,13 @@ def ensure_default_dismiss_reasons(db: Session) -> int:
                 reason_category=str(reason_data.get("reason_category") or REASON_CATEGORY_OTHER),
                 sort_order=int(reason_data.get("sort_order") or 0),
                 is_active=True,
+                requires_start_date=bool(reason_data.get("requires_start_date", False)),
             )
             db.add(reason)
             db.flush()
             created_count += 1
+        else:
+            reason.requires_start_date = bool(reason_data.get("requires_start_date", False))
 
         existing_suboptions = {
             suboption.system_key or suboption.name: suboption
@@ -205,3 +219,14 @@ def resolve_dismiss_selection(db: Session, payload: dict, *, require_active: boo
         suboption=selected_suboption,
         display_label=format_dismiss_reason_label(reason.name, selected_suboption.name if selected_suboption else None),
     )
+
+
+def validate_dismiss_start_date_requirement(reason: models.DismissReason, start_date: date | None) -> None:
+    if reason.requires_start_date and start_date is None:
+        raise HTTPException(status_code=400, detail="La fecha de inicio de la baja es obligatoria para el motivo seleccionado.")
+
+
+def normalize_dismiss_start_datetime(start_date: date | None) -> datetime | None:
+    if start_date is None:
+        return None
+    return datetime.combine(start_date, time.min)

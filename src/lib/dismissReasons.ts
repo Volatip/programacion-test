@@ -2,9 +2,12 @@ import { fetchWithAuth, parseErrorDetail } from "./api";
 
 export type DismissActionType = "dismiss" | "hide";
 export type DismissReasonCategory = "resignation" | "mobility" | "other";
+export type DismissReasonSystemKey = "comision-servicio";
+export type DismissSuboptionSystemKey = "total" | "parcial";
 
 export interface DismissReasonSuboption {
   id: number;
+  system_key: string | null;
   name: string;
   description: string;
   sort_order: number;
@@ -15,34 +18,45 @@ export function isPartialCommissionSelection(reason?: DismissReason | null, subo
     return false;
   }
 
+  const normalizedReasonKey = reason.system_key?.trim().toLowerCase() ?? "";
   const normalizedReason = reason.name.trim().toLowerCase();
   const suboption = reason.suboptions.find((item) => item.id === suboptionId) ?? null;
+  const normalizedSuboptionKey = suboption?.system_key?.trim().toLowerCase() ?? "";
   const normalizedSuboption = suboption?.name.trim().toLowerCase() ?? "";
+
+  if (normalizedReasonKey === "comision-servicio") {
+    return normalizedSuboptionKey === "parcial" || normalizedSuboption === "parcial";
+  }
 
   return (normalizedReason === "comisión de servicio" || normalizedReason === "comision de servicio") && normalizedSuboption === "parcial";
 }
 
 export interface DismissReason {
   id: number;
+  system_key: string | null;
   name: string;
   description: string;
   action_type: DismissActionType;
   reason_category: DismissReasonCategory;
   sort_order: number;
   is_active: boolean;
+  requires_start_date: boolean;
   suboptions: DismissReasonSuboption[];
 }
 
 export interface DismissReasonPayload {
+  system_key: DismissReasonSystemKey | null;
   name: string;
   description: string;
   action_type: DismissActionType;
   reason_category: DismissReasonCategory;
   sort_order: number;
   is_active: boolean;
+  requires_start_date: boolean;
 }
 
 export interface DismissSuboptionPayload {
+  system_key: DismissSuboptionSystemKey | null;
   name: string;
   description: string;
   sort_order: number;
