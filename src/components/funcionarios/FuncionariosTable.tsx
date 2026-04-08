@@ -1,4 +1,17 @@
 import type { Funcionario } from "../../context/OfficialsContextDefs";
+import { SortableHeader } from "../ui/SortableHeader";
+import type { SortState } from "../../lib/tableSorting";
+
+export type FuncionariosSortColumn =
+  | "name"
+  | "title"
+  | "law"
+  | "sisSpecialty"
+  | "hours"
+  | "status"
+  | "inactiveReason"
+  | "lunchTime"
+  | "lastUpdated";
 
 interface FuncionariosTableProps {
   officials: Funcionario[];
@@ -6,6 +19,8 @@ interface FuncionariosTableProps {
   isReadOnly: boolean;
   canManageOfficials: boolean;
   getContractHoursDisplay: (func: Funcionario) => string;
+  sortState: SortState<FuncionariosSortColumn>;
+  onSortChange: (column: FuncionariosSortColumn) => void;
   onActivate: (id: number) => void;
   onClearFutureDismiss: (id: number) => void;
   onClearPartialCommission: (id: number) => void;
@@ -18,6 +33,8 @@ export function FuncionariosTable({
   isReadOnly,
   canManageOfficials,
   getContractHoursDisplay,
+  sortState,
+  onSortChange,
   onActivate,
   onClearFutureDismiss,
   onClearPartialCommission,
@@ -63,15 +80,71 @@ export function FuncionariosTable({
       <table className={`w-full text-sm text-left ${showReasonColumn ? "table-fixed" : "table-auto"}`}>
         <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium transition-colors">
           <tr>
-            <th className={`px-4 py-3 ${showReasonColumn ? "w-[24%]" : "w-[25%]"}`}>Funcionario</th>
-            <th className={`px-4 py-3 ${showReasonColumn ? "w-[15%]" : "w-[15%]"}`}>Título</th>
-            <th className="px-4 py-3 w-[8%]">Ley</th>
-            <th className={`px-4 py-3 ${showReasonColumn ? "w-[12%]" : "w-[14%]"}`}>Especialidad SIS</th>
-            <th className={`px-4 py-3 ${showReasonColumn ? "w-[11%]" : "w-[10%]"}`}>Hrs/Sem</th>
-            <th className={`px-4 py-3 ${showReasonColumn ? "w-[7%]" : "w-[8%]"}`}>Estado</th>
-            {showReasonColumn && <th className="px-4 py-3 w-[12%]">Motivo</th>}
-            <th className="px-4 py-3 w-[7%] whitespace-nowrap">Colación</th>
-            <th className={`px-4 py-3 whitespace-nowrap ${showReasonColumn ? "w-[9%]" : "w-[8%]"}`}>Fecha RRHH</th>
+            <SortableHeader
+              label="Funcionario"
+              className={`px-4 py-3 ${showReasonColumn ? "w-[24%]" : "w-[25%]"}`}
+              isActive={sortState.column === "name"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("name")}
+            />
+            <SortableHeader
+              label="Título"
+              className={`px-4 py-3 ${showReasonColumn ? "w-[15%]" : "w-[15%]"}`}
+              isActive={sortState.column === "title"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("title")}
+            />
+            <SortableHeader
+              label="Ley"
+              className="px-4 py-3 w-[8%]"
+              isActive={sortState.column === "law"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("law")}
+            />
+            <SortableHeader
+              label="Especialidad SIS"
+              className={`px-4 py-3 ${showReasonColumn ? "w-[12%]" : "w-[14%]"}`}
+              isActive={sortState.column === "sisSpecialty"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("sisSpecialty")}
+            />
+            <SortableHeader
+              label="Hrs/Sem"
+              className={`px-4 py-3 ${showReasonColumn ? "w-[11%]" : "w-[10%]"}`}
+              isActive={sortState.column === "hours"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("hours")}
+            />
+            <SortableHeader
+              label="Estado"
+              className={`px-4 py-3 ${showReasonColumn ? "w-[7%]" : "w-[8%]"}`}
+              isActive={sortState.column === "status"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("status")}
+            />
+            {showReasonColumn && (
+              <SortableHeader
+                label="Motivo"
+                className="px-4 py-3 w-[12%]"
+                isActive={sortState.column === "inactiveReason"}
+                direction={sortState.direction}
+                onClick={() => onSortChange("inactiveReason")}
+              />
+            )}
+            <SortableHeader
+              label="Colación"
+              className="px-4 py-3 w-[7%] whitespace-nowrap"
+              isActive={sortState.column === "lunchTime"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("lunchTime")}
+            />
+            <SortableHeader
+              label="Fecha RRHH"
+              className={`px-4 py-3 whitespace-nowrap ${showReasonColumn ? "w-[9%]" : "w-[8%]"}`}
+              isActive={sortState.column === "lastUpdated"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("lastUpdated")}
+            />
             <th className="px-4 py-3 w-[10%] text-center">Acciones</th>
           </tr>
         </thead>

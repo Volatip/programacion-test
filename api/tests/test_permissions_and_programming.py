@@ -62,6 +62,19 @@ def make_period(*, name: str, month: int, status: str = "ANTIGUO", is_active: bo
     )
 
 
+def make_rrhh_upload_file(*, lunch_header: str, lunch_value: int) -> UploadFile:
+    return make_excel_upload_file(
+        filename="funcionarios.xlsx",
+        rows=[
+            {
+                "RUT": "12345678-9",
+                "Nombre": "Ana Pérez",
+                lunch_header: lunch_value,
+            }
+        ],
+    )
+
+
 def test_require_admin_blocks_rrhh_upload_for_non_admin() -> None:
     with pytest.raises(HTTPException) as exc_info:
         PermissionChecker.require_admin(
@@ -193,6 +206,41 @@ def test_upload_specialties_keeps_valid_excel_flow(db_session) -> None:
     assert payload == {"message": "Processed successfully. Created: 1, Updated: 0"}
     assert created.name == "Cardiología"
     assert created.visible == "SI"
+
+
+@pytest.mark.parametrize(
+    ("lunch_header", "expected_minutes"),
+    [
+        ("Tiempo de colación semanal (min)", 90),
+        ("Tiempo de colacion semanal (min)", 75),
+        ("Almuerzo", 60),
+    ],
+)
+def test_upload_funcionarios_maps_lunch_time_from_supported_rrhh_headers(
+    db_session,
+    lunch_header: str,
+    expected_minutes: int,
+) -> None:
+    period = make_period(name=f"2026-04-{expected_minutes}", month=4, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.commit()
+
+    upload = make_rrhh_upload_file(lunch_header=lunch_header, lunch_value=expected_minutes)
+
+    payload = asyncio.run(
+        funcionarios_router.upload_funcionarios(
+            file=upload,
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=31 + expected_minutes, role="admin"),
+        )
+    )
+
+    funcionario = db_session.query(models.Funcionario).filter(models.Funcionario.period_id == period.id).one()
+
+    assert payload["registros_creados"] == 1
+    assert payload["registros_actualizados"] == 0
+    assert funcionario.lunch_time_minutes == expected_minutes
 
 
 def test_resolve_user_scope_defaults_admin_to_own_scope_and_allows_explicit_override() -> None:

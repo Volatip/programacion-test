@@ -38,6 +38,8 @@ describe("FuncionariosTable", () => {
         isReadOnly={false}
         canManageOfficials={true}
         getContractHoursDisplay={() => "44 hrs"}
+        sortState={{ column: "name", direction: "asc" }}
+        onSortChange={vi.fn()}
         onActivate={vi.fn()}
         onClearFutureDismiss={onClearFutureDismiss}
         onClearPartialCommission={onClearPartialCommission}
@@ -113,6 +115,8 @@ describe("FuncionariosTable", () => {
         isReadOnly={false}
         canManageOfficials={true}
         getContractHoursDisplay={() => "44 hrs"}
+        sortState={{ column: "name", direction: "asc" }}
+        onSortChange={vi.fn()}
         onActivate={vi.fn()}
         onClearFutureDismiss={onClearFutureDismiss}
         onClearPartialCommission={vi.fn()}

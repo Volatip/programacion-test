@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useOfficials, Funcionario } from "../context/OfficialsContext";
 import { usePeriods } from "../context/PeriodsContext";
 import { PageHeader } from "../components/ui/PageHeader";
 import { ToastType } from "../components/ui/Toast";
 import { FuncionariosModals } from "../components/funcionarios/FuncionariosModals";
 import { FuncionariosPagination } from "../components/funcionarios/FuncionariosPagination";
-import { FuncionariosTable } from "../components/funcionarios/FuncionariosTable";
+import { FuncionariosTable, type FuncionariosSortColumn } from "../components/funcionarios/FuncionariosTable";
 import { FuncionariosToolbar } from "../components/funcionarios/FuncionariosToolbar";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { useAuth } from "../context/AuthContext";
@@ -15,6 +15,7 @@ import { isSupervisorRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 import { useProgrammingCache } from "../context/ProgrammingCacheContext";
+import { compareDateValues, compareLawValues, compareSummedNumberValues, sortItems, toggleSort, type SortState } from "../lib/tableSorting";
 
 // Helper to normalize RUT input for search
 // Removes dots but keeps hyphen and other characters to allow user typing
@@ -39,6 +40,10 @@ export function Funcionarios() {
   const [specialtyFilter, setSpecialtyFilter] = useState("");
   const [hoursFilter, setHoursFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("activo"); // Default to activo
+  const [sortState, setSortState] = useState<SortState<FuncionariosSortColumn>>({
+    column: "name",
+    direction: "asc",
+  });
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -249,31 +254,103 @@ export function Funcionarios() {
     addOfficial(official);
   };
 
-  // Filter officials based on local search and advanced filters
-  const filteredOfficials = officials.filter((f) => {
-    const matchesSearch = searchQuery
-      ? f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        f.rut.includes(searchQuery)
-      : true;
+  // Helper to get formatted display text for contract hours
+  const getContractHoursDisplay = (func: Funcionario) => {
+    if (func.contracts && func.contracts.length > 0) {
+      const contractStrings = func.contracts.map((c) => `${c.hours} hrs`);
 
-    const matchesTitle = titleFilter ? f.title.toLowerCase().includes(titleFilter.toLowerCase()) : true;
-    const matchesLaw = lawFilter ? f.law.toLowerCase().includes(lawFilter.toLowerCase()) : true;
-    const matchesSpecialty = specialtyFilter ? f.sisSpecialty.toLowerCase().includes(specialtyFilter.toLowerCase()) : true;
-    const matchesHours = hoursFilter ? String(f.hours).includes(hoursFilter) : true;
-    
-    let matchesStatus = true;
-    if (statusFilter === "activo") {
-        matchesStatus = f.status === "activo";
-    } else if (statusFilter === "inactivo") {
-        matchesStatus = f.status === "inactivo";
+      if (contractStrings.length === 1) {
+        return contractStrings[0];
+      }
+
+      if (contractStrings.length > 1) {
+        const last = contractStrings.pop();
+        return `${contractStrings.join(", ")} y ${last}`;
+      }
     }
-    // "todos" passes true
 
-    return matchesSearch && matchesTitle && matchesLaw && matchesSpecialty && matchesHours && matchesStatus;
-  });
+    if (typeof func.hours === "string" && func.hours.includes(" y ")) {
+      const parts = func.hours.split(" y ");
+      if (parts.length > 1) {
+        const last = parts.pop();
+        return `${parts.join(", ")} y ${last}`;
+      }
+    }
+
+    return typeof func.hours === "string" ? func.hours : `${func.hours} hrs.`;
+  };
+
+  // Filter officials based on local search and advanced filters
+  const filteredOfficials = useMemo(
+    () =>
+      officials.filter((f) => {
+        const matchesSearch = searchQuery
+          ? f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            f.rut.includes(searchQuery)
+          : true;
+
+        const matchesTitle = titleFilter ? f.title.toLowerCase().includes(titleFilter.toLowerCase()) : true;
+        const matchesLaw = lawFilter ? f.law.toLowerCase().includes(lawFilter.toLowerCase()) : true;
+        const matchesSpecialty = specialtyFilter ? f.sisSpecialty.toLowerCase().includes(specialtyFilter.toLowerCase()) : true;
+        const matchesHours = hoursFilter ? String(f.hours).includes(hoursFilter) : true;
+
+        let matchesStatus = true;
+        if (statusFilter === "activo") {
+          matchesStatus = f.status === "activo";
+        } else if (statusFilter === "inactivo") {
+          matchesStatus = f.status === "inactivo";
+        }
+
+        return matchesSearch && matchesTitle && matchesLaw && matchesSpecialty && matchesHours && matchesStatus;
+      }),
+    [officials, searchQuery, titleFilter, lawFilter, specialtyFilter, hoursFilter, statusFilter],
+  );
 
   // Pagination Logic
-  const sortedOfficials = [...filteredOfficials].sort((a, b) => a.name.localeCompare(b.name));
+  const sortedOfficials = useMemo(
+    () =>
+      sortItems(filteredOfficials, sortState, {
+        name: {
+          getValue: (func) => func.name,
+        },
+        title: {
+          getValue: (func) => func.title,
+        },
+        law: {
+          getValue: (func) => func.law,
+          compare: compareLawValues,
+        },
+        sisSpecialty: {
+          getValue: (func) => func.sisSpecialty,
+        },
+        hours: {
+          getValue: (func) => getContractHoursDisplay(func),
+          compare: compareSummedNumberValues,
+        },
+        status: {
+          getValue: (func) => (func.status === "inactivo" ? "Inactivo" : func.status === "activo" ? "Activo" : func.status),
+        },
+        inactiveReason: {
+          getValue: (func) => func.inactiveReason,
+        },
+        lunchTime: {
+          getValue: (func) => func.lunchTime,
+          compare: compareSummedNumberValues,
+        },
+        lastUpdated: {
+          getValue: (func) => func.lastUpdated,
+          compare: compareDateValues,
+        },
+      }),
+    [filteredOfficials, sortState],
+  );
+
+  useEffect(() => {
+    if (statusFilter === "activo" && sortState.column === "inactiveReason") {
+      setSortState({ column: "name", direction: "asc" });
+    }
+  }, [sortState.column, statusFilter]);
+
   const totalPages = Math.ceil(sortedOfficials.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -283,32 +360,6 @@ export function Funcionarios() {
     if (newPage >= 1 && newPage <= totalPages) {
       setCurrentPage(newPage);
     }
-  };
-
-  // Helper to get formatted display text for contract hours
-  const getContractHoursDisplay = (func: Funcionario) => {
-    // If we have detailed contracts, use them
-    if (func.contracts && func.contracts.length > 0) {
-        const contractStrings = func.contracts.map(c => `${c.hours} hrs`);
-        
-        if (contractStrings.length === 1) {
-            return contractStrings[0];
-        } else if (contractStrings.length > 1) {
-            const last = contractStrings.pop();
-            return `${contractStrings.join(', ')} y ${last}`;
-        }
-    }
-    
-    // Fallback for when no contracts array but we have the string "X hrs y Y hrs"
-    if (typeof func.hours === 'string' && func.hours.includes(' y ')) {
-        const parts = func.hours.split(' y ');
-        if (parts.length > 1) {
-             const last = parts.pop();
-             return `${parts.join(', ')} y ${last}`;
-        }
-    }
-    
-    return typeof func.hours === 'string' ? func.hours : `${func.hours} hrs.`;
   };
 
   return (
@@ -370,6 +421,11 @@ export function Funcionarios() {
                isReadOnly={isReadOnlyView}
                canManageOfficials={canManageOfficials}
               getContractHoursDisplay={getContractHoursDisplay}
+              sortState={sortState}
+              onSortChange={(column) => {
+                setCurrentPage(1);
+                setSortState((current) => toggleSort(current, column));
+              }}
               onActivate={handleInitiateActivate}
               onClearFutureDismiss={handleClearFutureDismiss}
               onClearPartialCommission={handleClearPartialCommission}

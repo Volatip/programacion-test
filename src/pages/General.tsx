@@ -5,12 +5,14 @@ import { ContextualHelpButton } from "../components/contextual-help/ContextualHe
 import { GeneralToolbar } from "../components/general/GeneralToolbar";
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
+import { SortableHeader } from "../components/ui/SortableHeader";
 import { PageHeader } from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import type { Funcionario } from "../context/OfficialsContextDefs";
 import { usePeriods } from "../context/PeriodsContext";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { fetchWithAuth, parseErrorDetail } from "../lib/api";
+import { compareLawValues, compareSummedNumberValues, sortItems, toggleSort, type SortState } from "../lib/tableSorting";
 
 interface GeneralRow {
   funcionario_id: number;
@@ -33,6 +35,16 @@ interface GeneralRow {
     observations: string;
   }[];
 }
+
+type GeneralSortColumn =
+  | "funcionario"
+  | "title"
+  | "law_code"
+  | "specialty_sis"
+  | "hours_per_week"
+  | "status"
+  | "user_name"
+  | "programmed_label";
 
 function getStatusBadgeClass(status: string) {
   return status.toLowerCase() === "activo"
@@ -89,6 +101,10 @@ export function General() {
   const [programmedFilter, setProgrammedFilter] = useState("todos");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(100);
+  const [sortState, setSortState] = useState<SortState<GeneralSortColumn>>({
+    column: "funcionario",
+    direction: "asc",
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOfficial, setSelectedOfficial] = useState<Funcionario | null>(null);
@@ -187,13 +203,46 @@ export function General() {
     setCurrentPage(1);
   }, [searchQuery, titleFilter, lawFilter, specialtyFilter, userFilter, statusFilter, programmedFilter, rows.length]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / itemsPerPage));
+  const sortedRows = useMemo(
+    () =>
+      sortItems(filteredRows, sortState, {
+        funcionario: {
+          getValue: (row) => row.funcionario,
+        },
+        title: {
+          getValue: (row) => row.title,
+        },
+        law_code: {
+          getValue: (row) => row.law_code,
+          compare: compareLawValues,
+        },
+        specialty_sis: {
+          getValue: (row) => row.specialty_sis,
+        },
+        hours_per_week: {
+          getValue: (row) => row.hours_per_week,
+          compare: compareSummedNumberValues,
+        },
+        status: {
+          getValue: (row) => formatStatusLabel(row.status),
+        },
+        user_name: {
+          getValue: (row) => row.user_name,
+        },
+        programmed_label: {
+          getValue: (row) => row.programmed_label,
+        },
+      }),
+    [filteredRows, sortState],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / itemsPerPage));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentRows = filteredRows.slice(startIndex, endIndex);
-  const visibleStart = filteredRows.length === 0 ? 0 : startIndex + 1;
-  const visibleEnd = filteredRows.length === 0 ? 0 : Math.min(endIndex, filteredRows.length);
+  const currentRows = sortedRows.slice(startIndex, endIndex);
+  const visibleStart = sortedRows.length === 0 ? 0 : startIndex + 1;
+  const visibleEnd = sortedRows.length === 0 ? 0 : Math.min(endIndex, sortedRows.length);
 
   const buildOfficialFromRow = (row: GeneralRow): Funcionario => ({
     id: row.funcionario_id,
@@ -221,13 +270,13 @@ export function General() {
   const handleNextOfficial = () => {
     if (!selectedOfficial) return;
 
-    const currentIndex = filteredRows.findIndex((row) => row.funcionario_id === selectedOfficial.id);
+    const currentIndex = sortedRows.findIndex((row) => row.funcionario_id === selectedOfficial.id);
     if (currentIndex === -1) {
       setSelectedOfficial(null);
       return;
     }
 
-    const nextRow = filteredRows[currentIndex + 1];
+    const nextRow = sortedRows[currentIndex + 1];
     if (!nextRow) {
       setSelectedOfficial(null);
       return;
@@ -290,14 +339,86 @@ export function General() {
               <table className="w-full text-sm text-left table-fixed">
                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium transition-colors">
                   <tr>
-                    <th className="px-4 py-3 w-[24%]">Funcionario</th>
-                    <th className="px-4 py-3 w-[16%]">Título</th>
-                    <th className="px-4 py-3 w-[8%]">Ley</th>
-                    <th className="px-4 py-3 w-[14%]">Especialidad SIS</th>
-                    <th className="px-4 py-3 w-[11%]">Hrs/Sem</th>
-                    <th className="px-4 py-3 w-[8%]">Estado</th>
-                    <th className="px-4 py-3 w-[13%]">Usuario</th>
-                    <th className="px-4 py-3 w-[10%]">Programado</th>
+                    <SortableHeader
+                      label="Funcionario"
+                      className="px-4 py-3 w-[24%]"
+                      isActive={sortState.column === "funcionario"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "funcionario"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Título"
+                      className="px-4 py-3 w-[16%]"
+                      isActive={sortState.column === "title"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "title"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Ley"
+                      className="px-4 py-3 w-[8%]"
+                      isActive={sortState.column === "law_code"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "law_code"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Especialidad SIS"
+                      className="px-4 py-3 w-[14%]"
+                      isActive={sortState.column === "specialty_sis"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "specialty_sis"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Hrs/Sem"
+                      className="px-4 py-3 w-[11%]"
+                      isActive={sortState.column === "hours_per_week"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "hours_per_week"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Estado"
+                      className="px-4 py-3 w-[8%]"
+                      isActive={sortState.column === "status"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "status"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Usuario"
+                      className="px-4 py-3 w-[13%]"
+                      isActive={sortState.column === "user_name"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "user_name"));
+                      }}
+                    />
+                    <SortableHeader
+                      label="Programado"
+                      className="px-4 py-3 w-[10%]"
+                      isActive={sortState.column === "programmed_label"}
+                      direction={sortState.direction}
+                      onClick={() => {
+                        setCurrentPage(1);
+                        setSortState((current) => toggleSort(current, "programmed_label"));
+                      }}
+                    />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700 transition-colors">
@@ -367,7 +488,7 @@ export function General() {
 
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between transition-colors">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Mostrando {visibleStart} a {visibleEnd} de {filteredRows.length} registros
+                 Mostrando {visibleStart} a {visibleEnd} de {sortedRows.length} registros
               </div>
 
               <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ from typing import List, Optional
 import logging
 import pandas as pd
 import io
+import unicodedata
 from api import models, schemas, database, auth
 from api.commission_service import apply_partial_commission_programming, clear_partial_commission_programming, ensure_partial_commission_base_programming, ensure_partial_commission_hours, is_partial_commission_selection
 from api.dismiss_reasons import HIDE_ACTION, normalize_dismiss_start_datetime, resolve_dismiss_selection, resolve_reason_category, validate_dismiss_start_date_requirement
@@ -23,6 +24,13 @@ import json
 
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_excel_header(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value).strip().lower())
+    without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+    alphanumeric_only = "".join(char if char.isalnum() else " " for char in without_accents)
+    return " ".join(alphanumeric_only.split())
 
 
 def get_period_group_assignments(db: Session, period_id: Optional[int], user_id: Optional[int] = None) -> list[tuple[str, Optional[int]]]:
@@ -160,8 +168,9 @@ async def upload_funcionarios(
         # Helper to find column
         def find_col(keywords, default=None):
             for col in df.columns:
+                normalized_col = normalize_excel_header(col)
                 for kw in keywords:
-                    if kw in col:
+                    if normalize_excel_header(kw) in normalized_col:
                         return col
             return default
 

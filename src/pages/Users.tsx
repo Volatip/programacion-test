@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { UserFormModal } from "../components/users/UserFormModal";
 import { UsersFloatingMenu } from "../components/users/UsersFloatingMenu";
-import { UsersTable } from "../components/users/UsersTable";
+import { UsersTable, type UsersSortColumn } from "../components/users/UsersTable";
 import { UsersToolbar } from "../components/users/UsersToolbar";
 import { PageHeader } from "../components/ui/PageHeader";
 import { formatRut, validateRut } from "../lib/utils";
 import { buildApiUrl, fetchWithAuth } from "../lib/api";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
+import { compareDateValues, sortItems, toggleSort, type SortState } from "../lib/tableSorting";
 
 interface User {
   id: number;
@@ -45,6 +46,10 @@ export function Users() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [formData, setFormData] = useState<UserFormData>(initialFormData);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortState, setSortState] = useState<SortState<UsersSortColumn>>({
+    column: "name",
+    direction: "asc",
+  });
   const buttonRefs = useRef<{ [key: number]: HTMLButtonElement | null }>({});
 
   const roleLabels: Record<string, string> = {
@@ -190,10 +195,40 @@ export function Users() {
     }
   };
 
-  const filteredUsers = users.filter((user) =>
-    user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.rut.includes(searchQuery)
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((user) =>
+        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.rut.includes(searchQuery)
+      ),
+    [users, searchQuery],
+  );
+
+  const sortedUsers = useMemo(
+    () =>
+      sortItems(filteredUsers, sortState, {
+        name: {
+          getValue: (user) => user.name,
+        },
+        rut: {
+          getValue: (user) => user.rut,
+        },
+        email: {
+          getValue: (user) => user.email,
+        },
+        role: {
+          getValue: (user) => roleLabels[user.role] || user.role,
+        },
+        status: {
+          getValue: (user) => user.status,
+        },
+        last_access: {
+          getValue: (user) => user.last_access,
+          compare: compareDateValues,
+        },
+      }),
+    [filteredUsers, roleLabels, sortState],
   );
 
   const toggleMenu = (id: number) => {
@@ -252,7 +287,7 @@ export function Users() {
         />
 
         <UsersTable
-          users={filteredUsers}
+          users={sortedUsers}
           roleLabels={roleLabels}
           roleColors={roleColors}
           formatDate={formatDate}
@@ -260,6 +295,8 @@ export function Users() {
           getRandomColor={getRandomColor}
           buttonRefs={buttonRefs}
           onToggleMenu={toggleMenu}
+          sortState={sortState}
+          onSortChange={(column) => setSortState((current) => toggleSort(current, column))}
         />
       </div>
 

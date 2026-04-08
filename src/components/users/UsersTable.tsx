@@ -1,5 +1,8 @@
 import { MoreVertical } from "lucide-react";
 
+import { SortableHeader } from "../ui/SortableHeader";
+import type { SortState } from "../../lib/tableSorting";
+
 interface User {
   id: number;
   name: string;
@@ -19,7 +22,11 @@ interface UsersTableProps {
   getRandomColor: (id: number) => string;
   buttonRefs: React.MutableRefObject<{ [key: number]: HTMLButtonElement | null }>;
   onToggleMenu: (id: number) => void;
+  sortState: SortState<UsersSortColumn>;
+  onSortChange: (column: UsersSortColumn) => void;
 }
+
+export type UsersSortColumn = "name" | "rut" | "email" | "role" | "status" | "last_access";
 
 export function UsersTable({
   users,
@@ -30,18 +37,56 @@ export function UsersTable({
   getRandomColor,
   buttonRefs,
   onToggleMenu,
+  sortState,
+  onSortChange,
 }: UsersTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm text-left">
         <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium">
           <tr>
-            <th className="px-6 py-3">Usuario</th>
-            <th className="px-6 py-3">RUT</th>
-            <th className="px-6 py-3">Correo</th>
-            <th className="px-6 py-3">Rol</th>
-            <th className="px-6 py-3">Estado</th>
-            <th className="px-6 py-3">Último acceso</th>
+            <SortableHeader
+              label="Usuario"
+              className="px-6 py-3"
+              isActive={sortState.column === "name"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("name")}
+            />
+            <SortableHeader
+              label="RUT"
+              className="px-6 py-3"
+              isActive={sortState.column === "rut"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("rut")}
+            />
+            <SortableHeader
+              label="Correo"
+              className="px-6 py-3"
+              isActive={sortState.column === "email"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("email")}
+            />
+            <SortableHeader
+              label="Rol"
+              className="px-6 py-3"
+              isActive={sortState.column === "role"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("role")}
+            />
+            <SortableHeader
+              label="Estado"
+              className="px-6 py-3"
+              isActive={sortState.column === "status"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("status")}
+            />
+            <SortableHeader
+              label="Último acceso"
+              className="px-6 py-3"
+              isActive={sortState.column === "last_access"}
+              direction={sortState.direction}
+              onClick={() => onSortChange("last_access")}
+            />
             <th className="px-6 py-3">Acciones</th>
           </tr>
         </thead>

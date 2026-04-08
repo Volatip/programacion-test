@@ -168,4 +168,84 @@ describe("General page", () => {
 
     expect(await screen.findByText(/no hay registros que coincidan/i)).toBeTruthy();
   });
+
+  it("sorts rows by hours and toggles the direction", async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          funcionario_id: 1,
+          funcionario: "Carlos Vega",
+          rut: "11.111.111-1",
+          title: "Enfermero",
+          law_code: "15076",
+          specialty_sis: "Urgencia",
+          hours_per_week: "44 hrs",
+          status: "activo",
+          user_id: 1,
+          user_ids: [1],
+          user_name: "Usuario Zeta",
+          is_scheduled: true,
+          programmed_label: "Programado",
+          contracts: [],
+        },
+        {
+          funcionario_id: 2,
+          funcionario: "Ana Soto",
+          rut: "22.222.222-2",
+          title: "Médico",
+          law_code: "19664",
+          specialty_sis: "Pediatría",
+          hours_per_week: "11 hrs y 11 hrs",
+          status: "activo",
+          user_id: 2,
+          user_ids: [2],
+          user_name: "Usuario Alfa",
+          is_scheduled: false,
+          programmed_label: "No Programado",
+          contracts: [],
+        },
+        {
+          funcionario_id: 3,
+          funcionario: "Bruno Díaz",
+          rut: "33.333.333-3",
+          title: "Matrona",
+          law_code: "15076 y 19664",
+          specialty_sis: "Cardiología",
+          hours_per_week: "33 hrs",
+          status: "inactivo",
+          user_id: 3,
+          user_ids: [3],
+          user_name: "Usuario Beta",
+          is_scheduled: true,
+          programmed_label: "Programado",
+          contracts: [],
+        },
+      ],
+    });
+
+    const { container } = render(
+      <MemoryRouter>
+        <General />
+      </MemoryRouter>
+    );
+
+    await screen.findByText("Ana Soto");
+
+    const getVisibleNames = () =>
+      Array.from(container.querySelectorAll("tbody tr button"))
+        .map((element) => element.textContent)
+        .filter(Boolean);
+
+    expect(getVisibleNames()).toEqual(["Ana Soto", "Bruno Díaz", "Carlos Vega"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /ordenar por hrs\/sem/i }));
+    expect(getVisibleNames()).toEqual(["Ana Soto", "Bruno Díaz", "Carlos Vega"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /ordenar por hrs\/sem/i }));
+    expect(getVisibleNames()).toEqual(["Carlos Vega", "Bruno Díaz", "Ana Soto"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /ordenar por funcionario/i }));
+    expect(getVisibleNames()).toEqual(["Ana Soto", "Bruno Díaz", "Carlos Vega"]);
+  });
 });
