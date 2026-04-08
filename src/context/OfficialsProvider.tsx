@@ -376,9 +376,13 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
         }));
         // Refresh groups to update counts if we implement counting
         fetchGroups();
+        return;
       }
+
+      throw new Error(await parseErrorDetail(response, "No se pudo asignar el funcionario al grupo."));
     } catch (error) {
       console.error("Error assigning group:", error);
+      throw error;
     }
   };
 

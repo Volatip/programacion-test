@@ -1,5 +1,5 @@
 
-import { Search, Check, Users } from "lucide-react";
+import { AlertCircle, Search, Check, Users } from "lucide-react";
 import { useOfficials } from "../../context/OfficialsContext";
 import { useAddOfficialToGroupModal } from "../../hooks/useAddOfficialToGroupModal";
 import { Modal } from "../ui/Modal";
@@ -20,6 +20,7 @@ export function AddOfficialToGroupModal({ isOpen, onClose, groupId, groupName }:
     searchResults,
     recentAddedId,
     addedCount,
+    feedback,
     handleAdd,
     getCurrentGroupName,
   } = useAddOfficialToGroupModal({
@@ -101,10 +102,16 @@ export function AddOfficialToGroupModal({ isOpen, onClose, groupId, groupName }:
         {/* Footer with Finish button */}
         <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-between items-center">
           <div className="text-sm text-gray-500">
-            {recentAddedId && (
+            {feedback?.type === "success" && recentAddedId && (
               <span className="text-green-600 dark:text-green-400 flex items-center gap-1 animate-in fade-in slide-in-from-bottom-2">
                 <Check className="w-4 h-4" />
-                Funcionario añadido correctamente
+                {feedback.message}
+              </span>
+            )}
+            {feedback?.type === "error" && (
+              <span className="text-red-600 dark:text-red-400 flex items-center gap-1 animate-in fade-in slide-in-from-bottom-2">
+                <AlertCircle className="w-4 h-4" />
+                {feedback.message}
               </span>
             )}
           </div>

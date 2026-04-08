@@ -1121,6 +1121,143 @@ def test_bind_funcionario_allows_admin_to_assign_any_official(db_session) -> Non
     assert binding.user_id == user.id
 
 
+def test_assign_funcionario_group_allows_sibling_contract_within_same_rut_scope(db_session) -> None:
+    user = make_user(user_id=470, role="user")
+    period = make_period(name="2026-08", month=8, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+
+    bound_contract = models.Funcionario(
+        name="Jorge Medrano",
+        title="Enfermero",
+        rut="70000010",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+        law_code="18834",
+    )
+    sibling_contract = models.Funcionario(
+        name="Jorge Medrano",
+        title="Enfermero",
+        rut="70000010",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+        law_code="19664",
+    )
+    group = models.Group(name="Grupo A", user_id=user.id, period_id=period.id)
+    db_session.add_all([bound_contract, sibling_contract, group])
+    db_session.flush()
+
+    binding = models.UserOfficial(user_id=user.id, funcionario_id=bound_contract.id)
+    db_session.add(binding)
+    db_session.commit()
+
+    payload = funcionarios_router.assign_funcionario_group(
+        funcionario_id=sibling_contract.id,
+        payload={"group_id": group.id},
+        db=db_session,
+        current_user=user,
+    )
+
+    refreshed_binding = db_session.query(models.UserOfficial).filter_by(user_id=user.id, funcionario_id=bound_contract.id).one()
+
+    assert payload == {"message": "Group assigned successfully"}
+    assert refreshed_binding.group_id == group.id
+
+
+def test_assign_funcionario_group_rejects_out_of_scope_person_even_with_same_period(db_session) -> None:
+    user = make_user(user_id=471, role="user")
+    owner = make_user(user_id=472, role="user")
+    period = make_period(name="2026-09", month=9, status="ACTIVO", is_active=True)
+    db_session.add_all([user, owner, period])
+    db_session.flush()
+
+    scoped_funcionario = models.Funcionario(
+        name="Funcionario Scoped",
+        title="Enfermero",
+        rut="70000020",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    foreign_funcionario = models.Funcionario(
+        name="Funcionario Externo",
+        title="Enfermero",
+        rut="70000021",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    group = models.Group(name="Grupo Scoped", user_id=user.id, period_id=period.id)
+    db_session.add_all([scoped_funcionario, foreign_funcionario, group])
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=scoped_funcionario.id),
+        models.UserOfficial(user_id=owner.id, funcionario_id=foreign_funcionario.id),
+    ])
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.assign_funcionario_group(
+            funcionario_id=foreign_funcionario.id,
+            payload={"group_id": group.id},
+            db=db_session,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Binding not found"
+
+
+def test_assign_funcionario_group_keeps_admin_explicit_scope_working_for_sibling_contracts(db_session) -> None:
+    admin = make_user(user_id=473, role="admin")
+    owner = make_user(user_id=474, role="user")
+    period = make_period(name="2026-10", month=10, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, owner, period])
+    db_session.flush()
+
+    bound_contract = models.Funcionario(
+        name="Ana Admin",
+        title="Enfermero",
+        rut="70000030",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    sibling_contract = models.Funcionario(
+        name="Ana Admin",
+        title="Enfermero",
+        rut="70000030",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    group = models.Group(name="Grupo Admin", user_id=owner.id, period_id=period.id)
+    db_session.add_all([bound_contract, sibling_contract, group])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=owner.id, funcionario_id=bound_contract.id))
+    db_session.commit()
+
+    payload = funcionarios_router.assign_funcionario_group(
+        funcionario_id=sibling_contract.id,
+        payload={"user_id": owner.id, "group_id": group.id},
+        db=db_session,
+        current_user=admin,
+    )
+
+    refreshed_binding = db_session.query(models.UserOfficial).filter_by(user_id=owner.id, funcionario_id=bound_contract.id).one()
+
+    assert payload == {"message": "Group assigned successfully"}
+    assert refreshed_binding.group_id == group.id
+
+
 def test_bind_funcionario_hidden_scope_is_isolated_by_period(db_session) -> None:
     user = make_user(user_id=48, role="user")
     old_period = make_period(name="2026-09", month=9)

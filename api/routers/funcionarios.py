@@ -48,6 +48,39 @@ def build_rut_to_group(assignments: list[tuple[str, Optional[int]]]) -> dict[str
     return rut_to_group
 
 
+def resolve_group_assignment_bindings(
+    db: Session,
+    *,
+    user_id: int,
+    funcionario_id: int,
+) -> tuple[models.Funcionario, list[models.UserOfficial]]:
+    funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
+    if not funcionario:
+        raise HTTPException(status_code=404, detail="Funcionario not found")
+
+    direct_binding = db.query(models.UserOfficial).filter(
+        models.UserOfficial.user_id == user_id,
+        models.UserOfficial.funcionario_id == funcionario_id,
+    ).first()
+    if direct_binding:
+        return funcionario, [direct_binding]
+
+    funcionario_rut = (funcionario.rut or "").strip()
+    if funcionario_rut and funcionario.period_id is not None:
+        sibling_bindings = db.query(models.UserOfficial).join(
+            models.Funcionario,
+            models.Funcionario.id == models.UserOfficial.funcionario_id,
+        ).filter(
+            models.UserOfficial.user_id == user_id,
+            models.Funcionario.rut == funcionario_rut,
+            models.Funcionario.period_id == funcionario.period_id,
+        ).all()
+        if sibling_bindings:
+            return funcionario, sibling_bindings
+
+    raise HTTPException(status_code=404, detail="Binding not found")
+
+
 def get_user_scoped_ruts(
     db: Session,
     user_id: int,
@@ -981,19 +1014,16 @@ def assign_funcionario_group(
     
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
-        
-    bind = db.query(models.UserOfficial).filter(
-        models.UserOfficial.user_id == user_id,
-        models.UserOfficial.funcionario_id == funcionario_id
-    ).first()
-    
-    if not bind:
-        raise HTTPException(status_code=404, detail="Binding not found")
+
+    funcionario, bindings = resolve_group_assignment_bindings(
+        db,
+        user_id=user_id,
+        funcionario_id=funcionario_id,
+    )
 
     if group_id is not None:
         PermissionChecker.check_can_manage_group(current_user, group_id, db)
         group = db.query(models.Group).filter(models.Group.id == group_id).first()
-        funcionario = db.query(models.Funcionario).filter(models.Funcionario.id == funcionario_id).first()
 
         if not group or not funcionario:
             raise HTTPException(status_code=404, detail="Group or funcionario not found")
@@ -1003,8 +1033,10 @@ def assign_funcionario_group(
                 status_code=400,
                 detail="No se puede asignar un funcionario a un grupo de otro período"
             )
-        
-    bind.group_id = group_id
+
+    for binding in bindings:
+        binding.group_id = group_id
+
     db.commit()
     return {"message": "Group assigned successfully"}
 

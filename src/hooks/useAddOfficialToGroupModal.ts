@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Funcionario, Group } from "../context/OfficialsContextDefs";
+
+type AddOfficialFeedback = {
+  type: "success" | "error";
+  message: string;
+};
 
 interface UseAddOfficialToGroupModalParams {
   isOpen: boolean;
@@ -19,6 +24,8 @@ export function useAddOfficialToGroupModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [addedOfficials, setAddedOfficials] = useState<number[]>([]);
   const [recentAddedId, setRecentAddedId] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<AddOfficialFeedback | null>(null);
+  const feedbackTimeoutRef = useRef<number | null>(null);
 
   const availableOfficials = useMemo(
     () =>
@@ -60,17 +67,45 @@ export function useAddOfficialToGroupModal({
       setSearchQuery("");
       setAddedOfficials([]);
       setRecentAddedId(null);
+      setFeedback(null);
     }
   }, [isOpen]);
 
-  const handleAdd = async (official: Funcionario) => {
-    await assignToGroup(official.id, groupId);
-    setAddedOfficials((prev) => [...prev, official.id]);
-    setRecentAddedId(official.id);
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current !== null) {
+        window.clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
-    setTimeout(() => {
+  const handleAdd = async (official: Funcionario) => {
+    if (feedbackTimeoutRef.current !== null) {
+      window.clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = null;
+    }
+
+    try {
+      await assignToGroup(official.id, groupId);
+      setAddedOfficials((prev) => [...prev, official.id]);
+      setRecentAddedId(official.id);
+      setFeedback({
+        type: "success",
+        message: "Funcionario añadido correctamente",
+      });
+
+      feedbackTimeoutRef.current = window.setTimeout(() => {
+        setRecentAddedId(null);
+        setFeedback((current) => (current?.type === "success" ? null : current));
+        feedbackTimeoutRef.current = null;
+      }, 2000);
+    } catch (error) {
       setRecentAddedId(null);
-    }, 2000);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "No se pudo asignar el funcionario al grupo.",
+      });
+    }
   };
 
   const getCurrentGroupName = (currentGroupId: number) => {
@@ -88,6 +123,7 @@ export function useAddOfficialToGroupModal({
     searchResults,
     recentAddedId,
     addedCount: addedOfficials.length,
+    feedback,
     handleAdd,
     getCurrentGroupName,
   };
