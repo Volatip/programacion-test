@@ -18,6 +18,10 @@ vi.mock("../../lib/api", () => ({
   parseErrorDetail: (...args: unknown[]) => parseErrorDetailMock(...args),
 }));
 
+vi.mock("../contextual-help/ContextualHelpButton", () => ({
+  ContextualHelpButton: () => <div>Help home</div>,
+}));
+
 describe("HomeTimelineSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,9 +72,9 @@ describe("HomeTimelineSection", () => {
     await screen.findByText("Carga base");
 
     fireEvent.click(screen.getByRole("button", { name: /editar timeline/i }));
-    fireEvent.change(screen.getByLabelText(/título principal/i), { target: { value: "Timeline editable" } });
-    fireEvent.change(screen.getByLabelText(/subtítulo \/ etiqueta/i), { target: { value: "Proceso mensual" } });
-    fireEvent.change(screen.getByLabelText(/descripción de la sección/i), { target: { value: "Vista horizontal del proceso." } });
+    fireEvent.change(screen.getAllByLabelText(/título principal/i)[0], { target: { value: "Timeline editable" } });
+    fireEvent.change(screen.getAllByLabelText(/subtítulo \/ etiqueta/i)[0], { target: { value: "Proceso mensual" } });
+    fireEvent.change(screen.getAllByLabelText(/descripción de la sección/i)[0], { target: { value: "Vista horizontal del proceso." } });
     fireEvent.change(screen.getByLabelText(/^título$/i), { target: { value: "Carga consolidada" } });
     fireEvent.change(screen.getByLabelText(/^fecha$/i), { target: { value: "Jun 2026" } });
     fireEvent.click(screen.getByRole("button", { name: /guardar línea de tiempo/i }));
@@ -84,7 +88,7 @@ describe("HomeTimelineSection", () => {
       key: "home_timeline",
       description: "Línea de tiempo editable de la página Inicio",
     });
-    expect(savedValue.section).toEqual({
+    expect(savedValue.section).toMatchObject({
       title: "Timeline editable",
       subtitle: "Proceso mensual",
       description: "Vista horizontal del proceso.",

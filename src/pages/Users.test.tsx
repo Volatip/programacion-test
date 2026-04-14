@@ -75,7 +75,7 @@ describe("Users page", () => {
     await screen.findByText("Ana User");
 
     const getVisibleNames = () =>
-      Array.from(container.querySelectorAll("tbody tr td:first-child span.font-medium"))
+      Array.from(container.querySelectorAll("tbody tr td:first-child span.font-semibold"))
         .map((element) => element.textContent)
         .filter(Boolean);
 
