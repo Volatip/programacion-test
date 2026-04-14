@@ -18,6 +18,8 @@ interface GeneralToolbarProps {
   onStatusFilterChange: (value: string) => void;
   programmedFilter: string;
   onProgrammedFilterChange: (value: string) => void;
+  reviewFilter: string;
+  onReviewFilterChange: (value: string) => void;
   filteredCount: number;
   onClearFilters: () => void;
 }
@@ -32,6 +34,14 @@ const programmedOptions = [
   { value: "todos", label: "Todos" },
   { value: "programado", label: "Programado" },
   { value: "no-programado", label: "No Programado" },
+];
+
+const reviewOptions = [
+  { value: "todos", label: "Todas las revisiones" },
+  { value: "sin_revision", label: "Sin revisión" },
+  { value: "pending", label: "Pendiente" },
+  { value: "validated", label: "Validado" },
+  { value: "fix_required", label: "Arreglar" },
 ];
 
 export function GeneralToolbar({
@@ -52,6 +62,8 @@ export function GeneralToolbar({
   onStatusFilterChange,
   programmedFilter,
   onProgrammedFilterChange,
+  reviewFilter,
+  onReviewFilterChange,
   filteredCount,
   onClearFilters,
 }: GeneralToolbarProps) {
@@ -64,7 +76,7 @@ export function GeneralToolbar({
             type="text"
             value={searchQuery}
             onChange={(event) => onSearchQueryChange(event.target.value)}
-            placeholder="Buscar funcionario, título, ley, usuario o estado..."
+            placeholder="Buscar funcionario o RUT..."
             aria-label="Buscar en General"
             className="w-full pl-10 pr-4 py-2 bg-gray-50 dark:bg-gray-700/50 border-none rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary/20 outline-none transition-colors"
           />
@@ -147,6 +159,19 @@ export function GeneralToolbar({
               className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-primary transition-colors"
             >
               {programmedOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={reviewFilter}
+              onChange={(event) => onReviewFilterChange(event.target.value)}
+              aria-label="Filtrar por revisión"
+              className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-900 dark:text-white outline-none focus:border-primary transition-colors"
+            >
+              {reviewOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

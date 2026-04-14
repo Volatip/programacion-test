@@ -1,5 +1,6 @@
 import type { Funcionario } from "../../context/OfficialsContextDefs";
 import { SortableHeader } from "../ui/SortableHeader";
+import { ResponsiveTable } from "../ui/ResponsiveTable";
 import type { SortState } from "../../lib/tableSorting";
 
 export type FuncionariosSortColumn =
@@ -10,6 +11,7 @@ export type FuncionariosSortColumn =
   | "hours"
   | "status"
   | "inactiveReason"
+  | "terminationDate"
   | "lunchTime"
   | "lastUpdated";
 
@@ -41,6 +43,8 @@ export function FuncionariosTable({
   onDelete,
 }: FuncionariosTableProps) {
   const showReasonColumn = statusFilter !== "activo";
+  const showTerminationDateColumn = statusFilter !== "activo";
+  const showHrDateColumn = statusFilter !== "inactivo";
 
   const getInactiveReasonStyles = (reason?: string) => {
     if (reason === "Renuncia") {
@@ -76,48 +80,36 @@ export function FuncionariosTable({
   }
 
   return (
-    <div className="overflow-x-auto w-full">
-      <table className={`w-full text-sm text-left ${showReasonColumn ? "table-fixed" : "table-auto"}`}>
+    <ResponsiveTable
+      minWidthClassName={showReasonColumn && showHrDateColumn ? "min-w-[1160px]" : showReasonColumn ? "min-w-[1080px]" : "min-w-[1020px]"}
+      tableClassName={`text-left text-sm ${showReasonColumn ? "table-fixed" : "table-auto"}`}
+    >
         <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 font-medium transition-colors">
           <tr>
             <SortableHeader
               label="Funcionario"
-              className={`px-4 py-3 ${showReasonColumn ? "w-[24%]" : "w-[25%]"}`}
+              className={`px-3 py-3 xl:px-4 ${showReasonColumn ? "w-[26rem]" : "w-[27rem]"}`}
               isActive={sortState.column === "name"}
               direction={sortState.direction}
               onClick={() => onSortChange("name")}
             />
             <SortableHeader
-              label="Título"
-              className={`px-4 py-3 ${showReasonColumn ? "w-[15%]" : "w-[15%]"}`}
-              isActive={sortState.column === "title"}
-              direction={sortState.direction}
-              onClick={() => onSortChange("title")}
-            />
-            <SortableHeader
-              label="Ley"
-              className="px-4 py-3 w-[8%]"
-              isActive={sortState.column === "law"}
-              direction={sortState.direction}
-              onClick={() => onSortChange("law")}
-            />
-            <SortableHeader
               label="Especialidad SIS"
-              className={`px-4 py-3 ${showReasonColumn ? "w-[12%]" : "w-[14%]"}`}
+              className={`px-3 py-3 xl:px-4 ${showReasonColumn ? "w-[11rem]" : "w-[12rem]"}`}
               isActive={sortState.column === "sisSpecialty"}
               direction={sortState.direction}
               onClick={() => onSortChange("sisSpecialty")}
             />
             <SortableHeader
               label="Hrs/Sem"
-              className={`px-4 py-3 ${showReasonColumn ? "w-[11%]" : "w-[10%]"}`}
+              className="w-[7rem] px-3 py-3 xl:px-4"
               isActive={sortState.column === "hours"}
               direction={sortState.direction}
               onClick={() => onSortChange("hours")}
             />
             <SortableHeader
               label="Estado"
-              className={`px-4 py-3 ${showReasonColumn ? "w-[7%]" : "w-[8%]"}`}
+              className="w-[7rem] px-3 py-3 xl:px-4"
               isActive={sortState.column === "status"}
               direction={sortState.direction}
               onClick={() => onSortChange("status")}
@@ -125,7 +117,7 @@ export function FuncionariosTable({
             {showReasonColumn && (
               <SortableHeader
                 label="Motivo"
-                className="px-4 py-3 w-[12%]"
+                className="w-[11rem] px-3 py-3 xl:px-4"
                 isActive={sortState.column === "inactiveReason"}
                 direction={sortState.direction}
                 onClick={() => onSortChange("inactiveReason")}
@@ -133,68 +125,84 @@ export function FuncionariosTable({
             )}
             <SortableHeader
               label="Colación"
-              className="px-4 py-3 w-[7%] whitespace-nowrap"
+              className="w-[6.5rem] whitespace-nowrap px-3 py-3 xl:px-4"
               isActive={sortState.column === "lunchTime"}
               direction={sortState.direction}
               onClick={() => onSortChange("lunchTime")}
             />
-            <SortableHeader
-              label="Fecha RRHH"
-              className={`px-4 py-3 whitespace-nowrap ${showReasonColumn ? "w-[9%]" : "w-[8%]"}`}
-              isActive={sortState.column === "lastUpdated"}
-              direction={sortState.direction}
-              onClick={() => onSortChange("lastUpdated")}
-            />
-            <th className="px-4 py-3 w-[10%] text-center">Acciones</th>
+            {showHrDateColumn && (
+              <SortableHeader
+                label="Fecha RRHH"
+                className="w-[7.5rem] whitespace-nowrap px-3 py-3 xl:px-4"
+                isActive={sortState.column === "lastUpdated"}
+                direction={sortState.direction}
+                onClick={() => onSortChange("lastUpdated")}
+              />
+            )}
+            {showTerminationDateColumn && (
+              <SortableHeader
+                label="Fecha Término"
+                className="w-[8.5rem] whitespace-nowrap px-3 py-3 xl:px-4"
+                isActive={sortState.column === "terminationDate"}
+                direction={sortState.direction}
+                onClick={() => onSortChange("terminationDate")}
+              />
+            )}
+            <th className="w-[12rem] px-3 py-3 text-center xl:px-4">Acciones</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-700 transition-colors">
           {officials.map((func) => (
             <tr key={func.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-colors">
-              <td className="px-4 py-3">
+              <td className="px-3 py-3 xl:px-4">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium ${func.color} shrink-0`}>
                     {func.initial}
                   </div>
-                   <div className="min-w-0 flex-1">
-                     <div className="font-medium text-gray-900 dark:text-white truncate" title={func.name}>
-                       {func.name}
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="truncate text-sm font-semibold text-gray-900 dark:text-white" title={func.name}>
+                        {func.name}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex max-w-full items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-[11px] font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
+                          <span className="truncate">{func.rut}</span>
+                        </span>
+                        <span
+                          className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            func.title === "Médico"
+                              ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                              : func.title === "Enfermera"
+                                ? "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300"
+                                : func.title === "Matrona"
+                                  ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
+                                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                          }`}
+                          title={func.title}
+                        >
+                          <span className="truncate">{func.title}</span>
+                        </span>
+                        <span
+                          className="inline-flex max-w-full items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300"
+                          title={func.law}
+                        >
+                          <span className="truncate">{func.law}</span>
+                        </span>
+                      </div>
                      </div>
-                     <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{func.rut}</div>
-                    </div>
-                  </div>
-                </td>
-              <td className="px-4 py-3">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-medium block w-fit max-w-full truncate ${
-                    func.title === "Médico"
-                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                      : func.title === "Enfermera"
-                        ? "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300"
-                        : func.title === "Matrona"
-                          ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
-                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
-                  }`}
-                  title={func.title}
-                >
-                  {func.title}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-blue-600 dark:text-blue-400 font-medium truncate" title={func.law}>
-                {func.law}
-              </td>
-              <td className="px-4 py-3 text-gray-600 dark:text-gray-300" title={func.sisSpecialty}>
+                   </div>
+                 </td>
+              <td className="px-3 py-3 text-gray-600 dark:text-gray-300 xl:px-4" title={func.sisSpecialty}>
                 <div className={`truncate ${showReasonColumn ? "max-w-[180px]" : "max-w-[160px]"}`}>
                   {func.sisSpecialty}
                 </div>
               </td>
               <td
-                className="px-4 py-3 text-gray-600 dark:text-gray-300 truncate"
+                className="px-3 py-3 text-gray-600 dark:text-gray-300 truncate xl:px-4"
                 title={String(getContractHoursDisplay(func))}
               >
                 {getContractHoursDisplay(func)}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-3 py-3 xl:px-4">
                 <span
                   className={`px-2 py-0.5 rounded-full text-xs font-medium border block w-fit ${
                     func.status === "inactivo"
@@ -213,7 +221,7 @@ export function FuncionariosTable({
                 </span>
               </td>
               {showReasonColumn && (
-                <td className="px-4 py-3">
+                <td className="px-3 py-3 xl:px-4">
                   {func.status === "inactivo" && func.inactiveReason ? (
                     <span
                       className={`inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-medium ${getInactiveReasonStyles(func.inactiveReason)}`}
@@ -226,13 +234,20 @@ export function FuncionariosTable({
                   )}
                 </td>
               )}
-              <td className="px-4 py-3 text-gray-500 dark:text-gray-400 truncate" title={func.lunchTime}>
+              <td className="px-3 py-3 text-gray-500 dark:text-gray-400 truncate xl:px-4" title={func.lunchTime}>
                 {func.lunchTime}
               </td>
-              <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
-                {func.lastUpdated}
-              </td>
-              <td className="px-4 py-3 text-center relative w-[10%]">
+              {showHrDateColumn && (
+                <td className="px-3 py-3 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400 xl:px-4">
+                  {func.lastUpdated}
+                </td>
+              )}
+              {showTerminationDateColumn && (
+                <td className="px-3 py-3 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400 xl:px-4">
+                  {func.terminationDate ?? "—"}
+                </td>
+              )}
+              <td className="relative px-3 py-3 text-center xl:px-4">
                 {!isReadOnly && canManageOfficials && (
                   <div className="flex items-center justify-center gap-2">
                     {func.status === "inactivo" ? (
@@ -278,7 +293,6 @@ export function FuncionariosTable({
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+    </ResponsiveTable>
   );
 }

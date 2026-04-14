@@ -44,6 +44,7 @@ function Consumer() {
     <>
       <div data-testid="group-id">{officials[0]?.groupId ?? "none"}</div>
       <div data-testid="future-dismiss">{officials[0]?.hasFutureDismissScheduled ? "yes" : "no"}</div>
+      <div data-testid="termination-date">{officials[0]?.terminationDate ?? "none"}</div>
       <div data-testid="result">{result}</div>
       <button
         onClick={async () => {
@@ -92,11 +93,12 @@ describe("OfficialsProvider", () => {
               law_code: "18834",
               hours_per_week: 44,
               group_id: null,
-              specialty_sis: "Urgencia",
-              lunch_time_minutes: 60,
-              status: "activo",
-              has_future_dismiss_scheduled: true,
-              future_dismiss_start_date: "2026-11-01",
+               specialty_sis: "Urgencia",
+               lunch_time_minutes: 60,
+               status: "activo",
+               termination_date: "2026-10-01T00:00:00Z",
+               has_future_dismiss_scheduled: true,
+               future_dismiss_start_date: "2026-11-01",
               holiday_days: 0,
               administrative_days: 0,
               congress_days: 0,
@@ -130,6 +132,7 @@ describe("OfficialsProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("group-id").textContent).toBe("0"));
     expect(screen.getByTestId("future-dismiss").textContent).toBe("yes");
+    expect(screen.getByTestId("termination-date").textContent).toBe(new Date("2026-10-01T00:00:00Z").toLocaleDateString());
 
     fireEvent.click(screen.getByRole("button", { name: "Asignar" }));
 
@@ -152,11 +155,12 @@ describe("OfficialsProvider", () => {
               law_code: "18834",
               hours_per_week: 44,
               group_id: null,
-              specialty_sis: "Urgencia",
-              lunch_time_minutes: 60,
-              status: "activo",
-              has_future_dismiss_scheduled: true,
-              future_dismiss_start_date: "2026-11-01",
+               specialty_sis: "Urgencia",
+               lunch_time_minutes: 60,
+               status: "activo",
+               termination_date: "2026-10-01T00:00:00Z",
+               has_future_dismiss_scheduled: true,
+               future_dismiss_start_date: "2026-11-01",
               holiday_days: 0,
               administrative_days: 0,
               congress_days: 0,

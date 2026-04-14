@@ -47,6 +47,63 @@ def test_read_contextual_help_page_returns_seeded_general_content(db_session) ->
     assert any(section.title == "Usuario y Programado" for section in payload.sections)
 
 
+def test_ensure_default_contextual_help_creates_new_page_slugs(db_session) -> None:
+    created = ensure_default_contextual_help(db_session)
+
+    assert created >= 1
+    slugs = {
+        slug
+        for slug, in db_session.query(models.ContextualHelpPage.slug).all()
+    }
+    assert {"bajas", "admin-correo", "estadisticas"}.issubset(slugs)
+
+
+def test_ensure_default_contextual_help_refreshes_unedited_seeded_pages(db_session) -> None:
+    page = models.ContextualHelpPage(
+        slug="home",
+        page_name="Home viejo",
+        description="Texto anterior",
+    )
+    page.sections.append(models.ContextualHelpSection(position=1, title="Viejo", content="Contenido viejo"))
+    db_session.add(page)
+    db_session.commit()
+
+    updated = ensure_default_contextual_help(db_session)
+
+    assert updated >= 1
+    persisted = db_session.query(models.ContextualHelpPage).filter(models.ContextualHelpPage.slug == "home").one()
+    assert persisted.page_name == "Resumen de Programación"
+    assert persisted.description.startswith("Resume el estado operativo")
+    assert [section.title for section in persisted.sections] == [
+        "Línea de tiempo",
+        "Estado operativo",
+        "Inactividad y movimientos",
+    ]
+
+
+def test_ensure_default_contextual_help_keeps_admin_customizations(db_session) -> None:
+    admin = make_user(user_id=99, role="admin")
+    db_session.add(admin)
+    db_session.commit()
+
+    page = models.ContextualHelpPage(
+        slug="home",
+        page_name="Ayuda personalizada",
+        description="Contenido definido por administración",
+        updated_by_id=admin.id,
+    )
+    page.sections.append(models.ContextualHelpSection(position=1, title="Bloque propio", content="No sobrescribir"))
+    db_session.add(page)
+    db_session.commit()
+
+    ensure_default_contextual_help(db_session)
+
+    persisted = db_session.query(models.ContextualHelpPage).filter(models.ContextualHelpPage.slug == "home").one()
+    assert persisted.page_name == "Ayuda personalizada"
+    assert persisted.description == "Contenido definido por administración"
+    assert [section.title for section in persisted.sections] == ["Bloque propio"]
+
+
 def test_list_contextual_help_pages_requires_admin(db_session) -> None:
     with pytest.raises(Exception) as exc_info:
         contextual_help_router.list_contextual_help_pages(

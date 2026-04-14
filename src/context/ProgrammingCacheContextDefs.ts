@@ -29,6 +29,10 @@ export interface ProgrammingData {
   updated_at: string;
   created_by_name?: string;
   updated_by_name?: string;
+  review_status?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by_name?: string | null;
+  review_comment?: string | null;
   fetchedAt: number; // Timestamp for cache invalidation if needed
 }
 

@@ -27,13 +27,13 @@ export function PeriodDetailsPanel({
   chartData,
 }: PeriodDetailsPanelProps) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors">
-      <h3 className="text-gray-900 dark:text-white text-lg font-semibold mb-4">Detalles del Período</h3>
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-colors dark:border-gray-700 dark:bg-gray-800 xl:p-6">
+      <h3 className="mb-4 text-base font-semibold text-gray-900 dark:text-white xl:text-lg">Detalles del Período</h3>
       <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors">
+        <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 transition-colors dark:bg-gray-700/50">
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-blue-500 dark:text-blue-400" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Estado del Período</span>
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 xl:text-sm">Estado del Período</span>
           </div>
           <span
             className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -46,32 +46,32 @@ export function PeriodDetailsPanel({
           </span>
         </div>
 
-        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors">
+        <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 transition-colors dark:bg-gray-700/50">
           <div className="flex items-center gap-3">
             <Activity className="w-5 h-5 text-purple-500 dark:text-purple-400" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Horas Contrato</span>
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 xl:text-sm">Horas Contrato</span>
           </div>
-          <span className="text-sm font-bold text-gray-900 dark:text-white">
+          <span className="text-xs font-bold text-gray-900 dark:text-white xl:text-sm">
             {chartData.find((d) => d.period === summary.period_name)?.hours.toFixed(0) || 0} hrs
           </span>
         </div>
 
-        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors">
+        <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 transition-colors dark:bg-gray-700/50">
           <div className="flex items-center gap-3">
             <Stethoscope className="w-5 h-5 text-teal-500 dark:text-teal-400" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Horas Turno</span>
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 xl:text-sm">Horas Turno</span>
           </div>
-          <span className="text-sm font-bold text-gray-900 dark:text-white">
+          <span className="text-xs font-bold text-gray-900 dark:text-white xl:text-sm">
             {summary.shift_hours?.toFixed(0) || 0} hrs
           </span>
         </div>
 
-        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition-colors">
+        <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3 transition-colors dark:bg-gray-700/50">
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5 text-orange-500 dark:text-orange-400" />
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Funcionarios con Turno</span>
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 xl:text-sm">Funcionarios con Turno</span>
           </div>
-          <span className="text-sm font-bold text-gray-900 dark:text-white">
+          <span className="text-xs font-bold text-gray-900 dark:text-white xl:text-sm">
             {summary.shift_officials_count || 0}
           </span>
         </div>

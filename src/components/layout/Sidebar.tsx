@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, Users, Briefcase, Calendar, FileSpreadsheet, Upload, History, Github, CircleHelp, TableProperties, UserMinus } from "lucide-react";
+import { Home, ChartColumn, Users, Briefcase, Calendar, FileSpreadsheet, Upload, History, Github, CircleHelp, TableProperties, UserMinus, Mail } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../../context/AuthContext";
 import { APP_ROUTES, buildPublicAssetPath } from "../../lib/appPaths";
@@ -8,16 +8,18 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const navItems = [
-    { to: APP_ROUTES.home, icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
+    { to: APP_ROUTES.home, icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
     { to: APP_ROUTES.users, icon: Users, label: "Usuarios", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.bajas, icon: UserMinus, label: "Bajas", roles: ['admin', 'administrador'] },
+    { to: APP_ROUTES.adminEmail, icon: Mail, label: "Correo", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.contextualHelpAdmin, icon: CircleHelp, label: "Ayudas", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.periods, icon: History, label: "Periodos", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.rrhh, icon: FileSpreadsheet, label: "RRHH", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.carga, icon: Upload, label: "Carga", roles: ['admin', 'administrador'] },
-    { to: APP_ROUTES.general, icon: TableProperties, label: "General", roles: ['admin', 'administrador', 'supervisor'] },
-    { to: APP_ROUTES.officials, icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
-    { to: APP_ROUTES.programming, icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor'] },
+    { to: APP_ROUTES.officials, icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
+    { to: APP_ROUTES.programming, icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
+    { to: APP_ROUTES.general, icon: TableProperties, label: "General", roles: ['admin', 'administrador', 'supervisor', 'revisor'] },
+    { to: APP_ROUTES.statistics, icon: ChartColumn, label: "Estadísticas", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
   ];
 
   const filteredNavItems = navItems.filter(item => 

@@ -1,7 +1,7 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Search, Calendar, Clock } from "lucide-react";
 import { useOfficials, Funcionario } from "../context/OfficialsContext";
-import { useState } from "react";
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
 import { useProgrammingClassification } from "../hooks/useProgrammingClassification";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
@@ -14,6 +14,7 @@ interface ProgramacionListaProps {
 }
 
 export function ProgramacionLista({ type }: ProgramacionListaProps) {
+  const location = useLocation();
   const navigate = useNavigate();
   const { isSupervisor, isScopeReady } = useSupervisorScope();
   const { officials: myOfficials } = useOfficials();
@@ -33,6 +34,19 @@ export function ProgramacionLista({ type }: ProgramacionListaProps) {
   const listOfficials = myOfficials
     .filter(f => (isScheduled ? isProgrammed(f) : (f.status === 'activo' && !isProgrammed(f))))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  useEffect(() => {
+    const selectedOfficialId = (location.state as { selectedOfficialId?: number } | null)?.selectedOfficialId;
+    if (!selectedOfficialId) {
+      return;
+    }
+
+    const officialToOpen = listOfficials.find((official) => official.id === selectedOfficialId);
+    if (officialToOpen) {
+      setSelectedOfficial(officialToOpen);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [listOfficials, location.pathname, location.state, navigate]);
   
   const filteredOfficials = searchQuery
     ? listOfficials.filter((f) =>
@@ -41,14 +55,25 @@ export function ProgramacionLista({ type }: ProgramacionListaProps) {
       )
     : listOfficials;
 
+  const selectedOfficialIndex = selectedOfficial
+    ? filteredOfficials.findIndex((f) => f.id === selectedOfficial.id)
+    : -1;
+
+  const hasPreviousOfficial = selectedOfficialIndex > 0;
+  const hasNextOfficial = selectedOfficialIndex !== -1 && selectedOfficialIndex < filteredOfficials.length - 1;
+
+  const handlePreviousOfficial = () => {
+    if (!hasPreviousOfficial) return;
+    setSelectedOfficial(filteredOfficials[selectedOfficialIndex - 1]);
+  };
+
   const handleNextOfficial = () => {
-    if (!selectedOfficial) return;
-    const currentIndex = filteredOfficials.findIndex(f => f.id === selectedOfficial.id);
-    if (currentIndex !== -1 && currentIndex < filteredOfficials.length - 1) {
-      setSelectedOfficial(filteredOfficials[currentIndex + 1]);
-    } else {
+    if (!hasNextOfficial) {
       setSelectedOfficial(null); // Close if last one
+      return;
     }
+
+    setSelectedOfficial(filteredOfficials[selectedOfficialIndex + 1]);
   };
 
   // Helper to get formatted display text for contract hours
@@ -151,12 +176,13 @@ export function ProgramacionLista({ type }: ProgramacionListaProps) {
 
           {/* Programming Modal */}
           {selectedOfficial && (
-            <ProgrammingModal 
-              funcionario={selectedOfficial} 
-              onClose={() => setSelectedOfficial(null)}
-              onNext={handleNextOfficial}
-            />
-          )}
+              <ProgrammingModal 
+                funcionario={selectedOfficial} 
+                onClose={() => setSelectedOfficial(null)}
+                onPrevious={hasPreviousOfficial ? handlePreviousOfficial : undefined}
+                onNext={hasNextOfficial ? handleNextOfficial : undefined}
+              />
+            )}
         </>
       )}
     </div>

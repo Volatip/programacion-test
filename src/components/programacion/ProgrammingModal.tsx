@@ -14,6 +14,8 @@ import { validateProgrammingForm } from "../../lib/programmingValidation";
 import { ProgrammingModalFormCard } from "./ProgrammingModalFormCard";
 import { ProgrammingModalHeader } from "./ProgrammingModalHeader";
 import { ProgrammingSummaryCard } from "./ProgrammingSummaryCard";
+import { parseErrorDetail, programmingReviewApi, type ProgrammingReviewEvent, type ProgrammingReviewResponse } from "../../lib/api";
+import type { ProgrammingReviewSnapshot } from "../../lib/programmingReview";
 import {
   ensureMinimumProgrammingEntries,
   mapProgrammingItemsToEntries,
@@ -28,7 +30,8 @@ import {
   getProgrammingVisualState,
   parseProgrammingContractHours,
 } from "../../lib/programmingModalUtils";
-import { isSupervisorRole } from "../../lib/userRoles";
+import { isActivePeriodForReview } from "../../lib/periodStatus";
+import { isAdminRole, isReadOnlyRole, isReviewerRole } from "../../lib/userRoles";
 
 
 type ActivityEntry = ProgrammingActivityEntry;
@@ -36,14 +39,17 @@ type ActivityEntry = ProgrammingActivityEntry;
 interface ProgrammingModalProps {
   funcionario: Funcionario | null;
   onClose: () => void;
+  onPrevious?: () => void;
   onNext?: () => void;
+  onReviewSaved?: (review: ProgrammingReviewSnapshot) => void;
 }
 
-export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingModalProps) {
+export function ProgrammingModal({ funcionario, onClose, onPrevious, onNext, onReviewSaved }: ProgrammingModalProps) {
   const { officials: myOfficials, groups, assignToGroup, refreshOfficials, updateOfficialLocally } = useOfficials();
   const { selectedPeriod, isReadOnly } = usePeriods();
   const { user } = useAuth();
-  const isReadOnlyView = isReadOnly || isSupervisorRole(user?.role);
+  const canReviewProgramming = isAdminRole(user?.role) || isReviewerRole(user?.role);
+  const isReadOnlyView = isReadOnly || isReadOnlyRole(user?.role);
   const { getCachedProgramming, fetchProgramming, updateCache, removeCachedProgramming } = useProgrammingCache();
   
   // Determine if the official is a Medical professional
@@ -124,6 +130,10 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
   const [programmingVersion, setProgrammingVersion] = useState<number | null>(null);
   const [lastUpdatedDate, setLastUpdatedDate] = useState<string | null>(null);
   const [isLoadingProgramming, setIsLoadingProgramming] = useState(false);
+  const [reviewComment, setReviewComment] = useState("");
+  const [latestReviewLabel, setLatestReviewLabel] = useState<string | null>(null);
+  const canSubmitReview = canReviewProgramming && isActivePeriodForReview(selectedPeriod) && programmingId !== null;
+  const [reviewHistory, setReviewHistory] = useState<ProgrammingReviewEvent[]>([]);
 
   // Validation State
   const [toastConfig, setToastConfig] = useState<{isOpen: boolean; message: React.ReactNode; type: ToastType; duration?: number}>({
@@ -252,12 +262,42 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
     setOtherProgrammers(Array.from(others));
   }, [user, creatorName, updaterName]);
 
+  const loadReviewHistory = useCallback(async (currentProgrammingId: number) => {
+    try {
+      const response = await programmingReviewApi.history(currentProgrammingId);
+      if (!response.ok) {
+        return;
+      }
+      const history = await response.json() as ProgrammingReviewEvent[];
+      setReviewHistory(history);
+      const latest = history[0];
+      if (!latest) {
+        setLatestReviewLabel(null);
+        return;
+      }
+      setLatestReviewLabel(`${latest.action === "validated" ? "Validado" : "Arreglar"} · ${latest.reviewed_by_name ?? "Sin revisor"}`);
+    } catch (error) {
+      console.error("Error loading review history:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!programmingId) {
+      setLatestReviewLabel(null);
+      setReviewHistory([]);
+      return;
+    }
+
+    void loadReviewHistory(programmingId);
+  }, [loadReviewHistory, programmingId]);
+
   // Helper to populate form from data
   const populateForm = useCallback((existing: ProgrammingData) => {
       setProgrammingId(existing.id);
       setProgrammingVersion(existing.version ?? 1);
       setLastUpdatedDate(existing.updated_at || null);
       setObservations(existing.observation || "");
+      setReviewComment("");
 
       // Store programmer names for validation
       setCreatorName(existing.created_by_name || null);
@@ -313,6 +353,9 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
       setProgrammingId(null);
       setProgrammingVersion(null);
       setLastUpdatedDate(null);
+      setReviewComment("");
+      setLatestReviewLabel(null);
+      setReviewHistory([]);
       // No existing programming found
       // Ensure correct defaults based on role
       const isMedical = funcionario?.title === "Médico(a) Cirujano(a)";
@@ -552,7 +595,7 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
   const modalTitle = (
     <ProgrammingModalHeader
       otherProgrammers={otherProgrammers}
-      showOtherProgrammersNotice={!isSupervisorRole(user?.role)}
+      showOtherProgrammersNotice={!isReadOnlyRole(user?.role)}
       contractHoursDisplayText={contractHoursDisplayText}
       totalScheduledHours={totalScheduledHours}
       availableColorClass={availableColorClass}
@@ -583,6 +626,60 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
       selectedProcess,
       selectedPerformanceUnit
     });
+  };
+
+  const handleSubmitReview = async (action: "validated" | "fix_required", comment?: string) => {
+    if (!programmingId || isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await programmingReviewApi.submit(programmingId, {
+        action,
+        comment: comment?.trim() || undefined,
+      });
+      if (!response.ok) {
+        throw new Error(await parseErrorDetail(response, "No se pudo registrar la revisión."));
+      }
+
+      const payload = await response.json() as ProgrammingReviewResponse;
+
+      const reviewSnapshot: ProgrammingReviewSnapshot = {
+        review_status: payload.review_status,
+        reviewed_at: payload.reviewed_at,
+        reviewed_by_name: payload.reviewed_by.name,
+      };
+
+      setLatestReviewLabel(`${payload.review_status === "validated" ? "Validado" : "Arreglar"} · ${payload.reviewed_by.name}`);
+      setReviewComment("");
+      const cachedProgramming = getCachedProgramming(funcionario.id);
+      if (cachedProgramming) {
+        updateCache(funcionario.id, {
+          ...cachedProgramming,
+          ...reviewSnapshot,
+          review_comment: payload.review_comment ?? cachedProgramming.review_comment ?? null,
+        });
+      }
+      onReviewSaved?.(reviewSnapshot);
+      await loadReviewHistory(programmingId);
+      setToastConfig({
+        isOpen: true,
+        type: payload.email.status === "failed" ? "warning" : "success",
+        message: payload.email.status === "failed"
+          ? `Revisión guardada. El correo falló: ${payload.email.detail ?? "sin detalle"}`
+          : "Revisión registrada exitosamente.",
+      });
+    } catch (error) {
+      console.error("Error reviewing programming:", error);
+      setToastConfig({
+        isOpen: true,
+        type: "error",
+        message: error instanceof Error ? error.message : "No se pudo registrar la revisión.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -654,12 +751,21 @@ export function ProgrammingModal({ funcionario, onClose, onNext }: ProgrammingMo
             onClose={onClose}
             onDelete={handleDeleteProgramming}
             onSaveAndNext={(e) => handleSave(e, true)}
+            onPrevious={onPrevious}
             onNext={onNext}
             programmingId={programmingId}
             isSubmitting={isSubmitting}
             isAvailableNegative={isAvailableNegative}
             isSaved={isSaved}
+            hasPrevious={!!onPrevious}
             hasNext={!!onNext}
+            reviewMode={canReviewProgramming}
+            canSubmitReview={canSubmitReview}
+            reviewComment={reviewComment}
+            onReviewCommentChange={setReviewComment}
+            onSubmitReview={handleSubmitReview}
+            latestReviewLabel={latestReviewLabel}
+            correctionHistory={reviewHistory.filter((event) => event.action === "fix_required")}
           />
         </div>
         <Toast 

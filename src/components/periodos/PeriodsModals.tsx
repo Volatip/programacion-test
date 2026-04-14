@@ -88,7 +88,7 @@ export function PeriodsModals({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Fecha de inicio</label>
               <input
@@ -113,7 +113,7 @@ export function PeriodsModals({
 
           <div className="flex flex-col gap-2 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-600">
             <label className="block text-sm font-medium text-gray-900 dark:text-white">Estado del período</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, status: "ANTIGUO" })}

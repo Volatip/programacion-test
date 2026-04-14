@@ -1,23 +1,170 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, aliased
 from typing import List, Optional
 from datetime import datetime
 import logging
+import smtplib
+from email.message import EmailMessage
 import bleach
 
 from .. import models, schemas, database, auth
 from ..commission_service import clear_partial_commission_programming, ensure_partial_commission_base_fields, ensure_partial_commission_hours, is_partial_commission_selection, merge_partial_observation, requires_performance_unit, upsert_partial_commission_item
+from ..contract_rules import is_law_15076_without_guard_release
 from ..dismiss_reasons import format_dismiss_reason_label
 from ..permissions import PermissionChecker
 from ..audit import AuditLogger
 from ..query_bounds import normalize_limit, normalize_skip
+from .config import (
+    DEFAULT_REVIEW_FIX_REQUIRED_BODY,
+    DEFAULT_REVIEW_FIX_REQUIRED_SUBJECT,
+    SMTP_CONFIG_KEYS,
+    _get_config_value,
+    get_smtp_settings_payload,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROGRAMMING_LIMIT = 200
 MAX_PROGRAMMING_LIMIT = 1000
+REVIEW_ACTION_LABELS = {
+    "pending": "Pendiente",
+    "validated": "Validado",
+    "fix_required": "Arreglar",
+}
+
+
+def reset_review_snapshot_after_fix(programming: models.Programming) -> None:
+    programming.review_status = "pending"
+    programming.reviewed_at = None
+    programming.reviewed_by_id = None
+    programming.review_comment = None
+
+
+def is_review_period_active(period: models.ProgrammingPeriod | None) -> bool:
+    if period is None:
+        return False
+    return period.status == "ACTIVO" or period.is_active is True
+
+
+def resolve_review_notification_recipients(db: Session, programming: models.Programming) -> list[models.User]:
+    funcionario = programming.funcionario or db.query(models.Funcionario).filter(models.Funcionario.id == programming.funcionario_id).first()
+    if funcionario is None or not funcionario.rut or funcionario.period_id is None:
+        return []
+
+    recipients = db.query(models.User).join(
+        models.UserOfficial,
+        models.UserOfficial.user_id == models.User.id,
+    ).join(
+        models.Funcionario,
+        models.Funcionario.id == models.UserOfficial.funcionario_id,
+    ).filter(
+        models.User.status == "activo",
+        models.Funcionario.rut == funcionario.rut,
+        models.Funcionario.period_id == funcionario.period_id,
+    ).order_by(models.User.id.asc()).all()
+
+    deduped: list[models.User] = []
+    seen: set[int] = set()
+    for recipient in recipients:
+        if recipient.id in seen:
+            continue
+        seen.add(recipient.id)
+        deduped.append(recipient)
+    return deduped
+
+
+def create_fix_required_notifications(
+    db: Session,
+    *,
+    programming: models.Programming,
+    comment: str | None,
+    recipients: list[models.User],
+) -> int:
+    funcionario = programming.funcionario
+    if funcionario is None:
+        return 0
+
+    comment_text = (comment or "Sin observaciones adicionales.").strip()
+    created = 0
+    for recipient in recipients:
+        db.add(models.UserNotification(
+            user_id=recipient.id,
+            type="programming_review_fix_required",
+            title=f"Arreglar programación de {funcionario.name}",
+            message=f"Se solicitó arreglar la programación de {funcionario.name}. Observación: {comment_text}",
+            link=f"/general?programmingId={programming.id}",
+            payload_json=f'{{"programming_id": {programming.id}, "funcionario_id": {funcionario.id}}}',
+        ))
+        created += 1
+    return created
+
+
+def send_fix_required_email(
+    db: Session,
+    *,
+    recipients: list[models.User],
+    programming: models.Programming,
+    comment: str | None,
+) -> tuple[bool, str, str | None]:
+    if not recipients:
+        return False, "skipped", "Sin destinatarios vigentes."
+
+    settings = get_smtp_settings_payload(db)
+    password = _get_config_value(db, SMTP_CONFIG_KEYS["password"])
+    if not settings.host or not settings.port or not settings.from_email or not settings.password_configured or password is None:
+        return False, "skipped", "SMTP no configurado."
+
+    message = EmailMessage()
+    funcionario_name = programming.funcionario.name if programming.funcionario else f"programación {programming.id}"
+    template_context = {
+        "funcionario_nombre": funcionario_name,
+        "comentario": (comment or "Sin observaciones adicionales.").strip(),
+        "programming_id": str(programming.id),
+        "periodo_nombre": programming.period.name if programming.period else "Sin período",
+    }
+    message["Subject"] = render_email_template(
+        _get_config_value(db, SMTP_CONFIG_KEYS["review_fix_required_subject"]) or DEFAULT_REVIEW_FIX_REQUIRED_SUBJECT,
+        template_context,
+    )
+    message["From"] = f'{settings.from_name} <{settings.from_email}>' if settings.from_name else settings.from_email
+    message["To"] = ", ".join([user.email for user in recipients if user.email])
+    message.set_content(
+        render_email_template(
+            _get_config_value(db, SMTP_CONFIG_KEYS["review_fix_required_body"]) or DEFAULT_REVIEW_FIX_REQUIRED_BODY,
+            template_context,
+        )
+    )
+
+    try:
+        if settings.use_ssl:
+            with smtplib.SMTP_SSL(settings.host, settings.port, timeout=10) as smtp:
+                if settings.username:
+                    smtp.login(settings.username, password)
+                smtp.send_message(message)
+        elif settings.use_tls:
+            with smtplib.SMTP(settings.host, settings.port, timeout=10) as smtp:
+                smtp.starttls()
+                if settings.username:
+                    smtp.login(settings.username, password)
+                smtp.send_message(message)
+        else:
+            with smtplib.SMTP(settings.host, settings.port, timeout=10) as smtp:
+                if settings.username:
+                    smtp.login(settings.username, password)
+                smtp.send_message(message)
+        return True, "sent", None
+    except Exception as exc:
+        logger.warning("SMTP delivery failed for programming review id=%s", programming.id, exc_info=True)
+        return True, "failed", str(exc)
+
+
+def render_email_template(template: str, context: dict[str, str]) -> str:
+    rendered = template
+    for key, value in context.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", value)
+    return rendered
 
 
 def validate_programming_version(current_version: int, requested_version: Optional[int]):
@@ -193,12 +340,7 @@ def validate_hours_balance(db: Session, funcionario_id: int, items_data: List[di
         contracts = [func]
 
     for contract in contracts:
-        # Logic from frontend: Exclude Law 15076 unless "liberado de guardia"
-        is_law_15076 = contract.law_code and "15076" in contract.law_code
-        obs = (contract.observations or "").lower()
-        is_liberado = "liberado de guardia" in obs
-        
-        if is_law_15076 and not is_liberado:
+        if is_law_15076_without_guard_release(contract.law_code, contract.observations):
             continue
         total_contract_hours += float(contract.hours_per_week or 0)
 
@@ -210,6 +352,8 @@ def validate_hours_balance(db: Session, funcionario_id: int, items_data: List[di
     # We should probably do the same.
     lunch_minutes = 0
     for contract in contracts:
+        if is_law_15076_without_guard_release(contract.law_code, contract.observations):
+            continue
         if (contract.lunch_time_minutes or 0) > lunch_minutes:
             lunch_minutes = contract.lunch_time_minutes
 
@@ -582,16 +726,29 @@ def read_programmings(
     query = db.query(models.Programming).options(
         joinedload(models.Programming.items),
         joinedload(models.Programming.created_by),
-        joinedload(models.Programming.updated_by)
+        joinedload(models.Programming.updated_by),
+        joinedload(models.Programming.reviewed_by),
     )
 
     effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
 
     if effective_user_id is not None and (not PermissionChecker.is_admin(current_user) or PermissionChecker.is_supervisor(current_user) or user_id is not None):
+        scoped_funcionario = aliased(models.Funcionario)
+        scoped_binding_funcionario = aliased(models.Funcionario)
+
         query = query.join(
+            scoped_funcionario,
+            scoped_funcionario.id == models.Programming.funcionario_id,
+        ).join(
             models.UserOfficial,
-            models.UserOfficial.funcionario_id == models.Programming.funcionario_id
-        ).filter(models.UserOfficial.user_id == effective_user_id)
+            models.UserOfficial.user_id == effective_user_id,
+        ).join(
+            scoped_binding_funcionario,
+            scoped_binding_funcionario.id == models.UserOfficial.funcionario_id,
+        ).filter(
+            scoped_binding_funcionario.rut == scoped_funcionario.rut,
+            scoped_binding_funcionario.period_id == scoped_funcionario.period_id,
+        )
     
     if period_id:
         query = query.filter(models.Programming.period_id == period_id)
@@ -611,7 +768,9 @@ def read_programming(
     db_programming = db.query(models.Programming).options(
         joinedload(models.Programming.items),
         joinedload(models.Programming.created_by),
-        joinedload(models.Programming.updated_by)
+        joinedload(models.Programming.updated_by),
+        joinedload(models.Programming.reviewed_by),
+        joinedload(models.Programming.review_events).joinedload(models.ProgrammingReviewEvent.reviewed_by),
     ).filter(models.Programming.id == programming_id).first()
     if not db_programming:
         raise HTTPException(status_code=404, detail="Programming not found")
@@ -624,8 +783,112 @@ def read_programming(
     # So sorting by ID should reflect the saved order.
     if db_programming.items:
         db_programming.items.sort(key=lambda x: x.id)
-        
+    
     return db_programming
+
+
+@router.get("/{programming_id}/review-history", response_model=List[schemas.ProgrammingReviewEventResponse])
+def read_programming_review_history(
+    programming_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    db_programming = db.query(models.Programming).filter(models.Programming.id == programming_id).first()
+    if not db_programming:
+        raise HTTPException(status_code=404, detail="Programming not found")
+
+    PermissionChecker.check_can_access_funcionario(current_user, db_programming.funcionario_id, db)
+    return db.query(models.ProgrammingReviewEvent).options(
+        joinedload(models.ProgrammingReviewEvent.reviewed_by)
+    ).filter(
+        models.ProgrammingReviewEvent.programming_id == programming_id
+    ).order_by(
+        models.ProgrammingReviewEvent.reviewed_at.desc(),
+        models.ProgrammingReviewEvent.id.desc(),
+    ).all()
+
+
+@router.post("/{programming_id}/review", response_model=schemas.ProgrammingReviewResponse)
+def review_programming(
+    programming_id: int,
+    payload: schemas.ProgrammingReviewRequest,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    PermissionChecker.check_can_review_programming(current_user)
+
+    db_programming = db.query(models.Programming).options(
+        joinedload(models.Programming.funcionario),
+        joinedload(models.Programming.period),
+    ).filter(models.Programming.id == programming_id).first()
+    if not db_programming:
+        raise HTTPException(status_code=404, detail="Programming not found")
+
+    PermissionChecker.check_can_access_funcionario(current_user, db_programming.funcionario_id, db)
+
+    if not is_review_period_active(db_programming.period):
+        raise HTTPException(
+            status_code=409,
+            detail="La revisión está bloqueada porque el período de la programación no está activo.",
+        )
+
+    comment = (payload.comment or "").strip() or None
+    if payload.action == "fix_required" and not comment:
+        raise HTTPException(status_code=400, detail="La observación es obligatoria para Arreglar.")
+
+    now = datetime.utcnow()
+    db_programming.review_status = payload.action
+    db_programming.reviewed_at = now
+    db_programming.reviewed_by_id = current_user.id
+    db_programming.review_comment = comment
+
+    review_event = models.ProgrammingReviewEvent(
+        programming_id=db_programming.id,
+        action=payload.action,
+        comment=comment,
+        reviewed_by_id=current_user.id,
+        reviewed_at=now,
+        email_status="skipped" if payload.action == "validated" else None,
+    )
+    db.add(review_event)
+
+    recipients = resolve_review_notification_recipients(db, db_programming) if payload.action == "fix_required" else []
+    notifications_created = create_fix_required_notifications(
+        db,
+        programming=db_programming,
+        comment=comment,
+        recipients=recipients,
+    ) if payload.action == "fix_required" else 0
+
+    db.commit()
+    db.refresh(db_programming)
+    db.refresh(review_event)
+
+    attempted, email_status, email_detail = (False, "skipped", None)
+    if payload.action == "fix_required":
+        attempted, email_status, email_detail = send_fix_required_email(
+            db,
+            recipients=recipients,
+            programming=db_programming,
+            comment=comment,
+        )
+        review_event.email_status = email_status
+        review_event.email_error = email_detail
+        db.commit()
+
+    return schemas.ProgrammingReviewResponse(
+        programming_id=db_programming.id,
+        review_status=db_programming.review_status,
+        reviewed_at=db_programming.reviewed_at,
+        review_comment=db_programming.review_comment,
+        reviewed_by=schemas.UserSummary(id=current_user.id, name=current_user.name),
+        notifications_created=notifications_created,
+        email=schemas.ProgrammingReviewEmailResult(
+            attempted=attempted,
+            status=email_status,
+            detail=email_detail,
+        ),
+    )
 
 @router.put("/{programming_id}", response_model=schemas.ProgrammingResponse)
 def update_programming(
@@ -686,6 +949,9 @@ def update_programming(
     
     for key, value in update_data.items():
         setattr(db_programming, key, value)
+
+    if db_programming.review_status == "fix_required":
+        reset_review_snapshot_after_fix(db_programming)
     
     db_programming.updated_by_id = user_id
     db_programming.version += 1

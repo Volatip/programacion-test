@@ -23,3 +23,13 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.date-input-hide-picker::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.date-input-hide-picker::-webkit-inner-spin-button,
+.date-input-hide-picker::-webkit-clear-button {
+  display: none;
+}

@@ -1,32 +1,17 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { DashboardStatsSection } from "../components/dashboard/DashboardStatsSection";
-import { GroupHoursChart } from "../components/dashboard/GroupHoursChart";
-import { PeriodDetailsPanel } from "../components/dashboard/PeriodDetailsPanel";
-import { PageHeader } from "../components/ui/PageHeader";
-import { usePeriods } from "../context/PeriodsContext";
 import { useAuth } from "../context/AuthContext";
+import { usePeriods } from "../context/PeriodsContext";
 import { useDashboardStats } from "../hooks/useDashboardStats";
-import { useTheme } from "../hooks/useTheme";
-import { HoursChart } from "../components/dashboard/HoursChart";
 import { Users, Activity, FileText, AlertCircle, RefreshCw } from "lucide-react";
-import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
-
-interface GroupChartItem {
-  name: string;
-  hours: number;
-  shift_hours: number;
-  count: number;
-  shift_count: number;
-}
+import { HomeTimelineSection } from "../components/dashboard/HomeTimelineSection";
 
 const Home = () => {
   const { user } = useAuth();
   const { selectedPeriod } = usePeriods();
-  const { theme } = useTheme();
   const { isSupervisor, isScopeReady, selectedUser } = useSupervisorScope();
-  const [hoveredGroup, setHoveredGroup] = useState<GroupChartItem | null>(null);
   const { stats, loading, error, fetchStats } = useDashboardStats({
     periodId: selectedPeriod?.id,
     userId: isSupervisor ? selectedUser?.id : undefined,
@@ -118,18 +103,13 @@ const Home = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={isSupervisor ? "Supervisión por usuario" : "Resumen de Programación"}
-        subtitle={isSupervisor && selectedUser ? `${stats?.summary.period_name || 'Período Actual'} · ${selectedUser.name}` : `${stats?.summary.period_name || 'Período Actual'}`}
-      >
-        <ContextualHelpButton slug="home" />
-      </PageHeader>
-
       <SupervisorScopePanel blocking={isSupervisor && !isScopeReady} />
 
       {isSupervisor && !isScopeReady ? null : (
         <>
-          <div className="space-y-8">
+          <HomeTimelineSection role={user?.role} />
+
+          <div className="space-y-6 xl:space-y-8">
             <DashboardStatsSection
               title="Estado Operativo"
               accentClassName="bg-indigo-500 dark:bg-indigo-400"
@@ -142,32 +122,6 @@ const Home = () => {
               items={inactiveStats}
             />
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 h-96">
-              <HoursChart
-                title="Horas Contrato por Período"
-                data={stats?.chart_data || []}
-                color={theme === 'dark' ? '#818cf8' : '#4F46E5'}
-                shiftColor={theme === 'dark' ? '#2dd4bf' : '#14b8a6'}
-              />
-            </div>
-
-            <PeriodDetailsPanel
-              selectedPeriod={selectedPeriod}
-              summary={stats?.summary || { period_name: "", shift_hours: 0, shift_officials_count: 0 }}
-              chartData={stats?.chart_data || []}
-            />
-          </div>
-
-          {stats?.group_chart_data && stats.group_chart_data.length > 0 && (
-            <GroupHoursChart
-              data={stats.group_chart_data}
-              hoveredGroup={hoveredGroup}
-              onHoverGroup={setHoveredGroup}
-              theme={theme}
-            />
-          )}
         </>
       )}
     </div>

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, case, and_, not_, or_
 from typing import Dict, Optional
 from ..database import get_db
+from ..contract_rules import is_law_15076_without_guard_release
 from ..dismiss_reasons import REASON_CATEGORY_MOBILITY, REASON_CATEGORY_RESIGNATION, resolve_reason_category
 from ..models import (
     Funcionario,
@@ -81,9 +82,7 @@ def get_visible_ruts_by_period_subquery(db: Session, user_id: int):
 
 
 def is_shift_contract_record(law_code: Optional[str], observations: Optional[str]) -> bool:
-    if not law_code or "15076" not in law_code:
-        return False
-    return not (observations and "liberado de guardia" in observations.lower())
+    return is_law_15076_without_guard_release(law_code, observations)
 
 
 @router.get("/dashboard")
@@ -142,9 +141,16 @@ def get_dashboard_stats(
             Funcionario.period_id == current_period_id,
         )
         if effective_user_id is not None:
+            scoped_binding_funcionario = aliased(Funcionario)
             programmed_query = programmed_query.join(
-                UserOfficial, UserOfficial.funcionario_id == Funcionario.id
-            ).filter(UserOfficial.user_id == effective_user_id)
+                UserOfficial, UserOfficial.user_id == effective_user_id
+            ).join(
+                scoped_binding_funcionario,
+                scoped_binding_funcionario.id == UserOfficial.funcionario_id,
+            ).filter(
+                scoped_binding_funcionario.rut == Funcionario.rut,
+                scoped_binding_funcionario.period_id == Funcionario.period_id,
+            )
 
         programmed_officials = programmed_query.all()
         programmed_official_keys = {get_official_identity_key(funcionario) for funcionario in programmed_officials}

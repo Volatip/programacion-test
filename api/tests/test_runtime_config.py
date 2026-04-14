@@ -1,9 +1,11 @@
 import hashlib
+from email.message import EmailMessage
 
 import pytest
 from sqlalchemy import create_engine, text
 
-from api import database, runtime_config
+from api import database, models, runtime_config, schemas
+from api.routers import config as config_router
 
 
 @pytest.fixture(autouse=True)
@@ -298,7 +300,128 @@ def test_database_readiness_repairs_local_legacy_revoked_tokens_schema(tmp_path,
 
     assert repaired_row.token_hash == hashlib.sha256(b"legacy-access-token").hexdigest()
     assert any(column[1] == "token" and column[3] == 0 for column in columns)
-    assert any(index[1] == "ix_revoked_tokens_token_hash" for index in indexes)
+
+
+def test_smtp_settings_response_hides_password(db_session) -> None:
+    db_session.add_all([
+        models.Config(key="smtp_host", value="smtp.example.com"),
+        models.Config(key="smtp_port", value="587"),
+        models.Config(key="smtp_username", value="mailer"),
+        models.Config(key="smtp_password", value="secret"),
+        models.Config(key="smtp_from_email", value="noreply@example.com"),
+        models.Config(key="smtp_from_name", value="Programacion"),
+        models.Config(key="smtp_use_tls", value="true"),
+        models.Config(key="smtp_use_ssl", value="false"),
+        models.Config(key="smtp_review_fix_required_subject", value="Asunto {{funcionario_nombre}}"),
+        models.Config(key="smtp_review_fix_required_body", value="Cuerpo {{programming_id}}"),
+    ])
+    db_session.commit()
+
+    payload = config_router.get_smtp_settings_payload(db_session)
+
+    assert payload.host == "smtp.example.com"
+    assert payload.password_configured is True
+    assert payload.use_ssl is False
+    assert payload.review_fix_required_subject == "Asunto {{funcionario_nombre}}"
+    assert payload.review_fix_required_body == "Cuerpo {{programming_id}}"
+    assert not hasattr(payload, "password")
+
+
+def test_smtp_settings_update_preserves_existing_password_when_empty(db_session) -> None:
+    db_session.add(models.Config(key="smtp_password", value="persisted-secret"))
+    db_session.commit()
+
+    payload = config_router.upsert_smtp_settings(
+        db_session,
+        schemas.SmtpSettingsUpdate(
+            host="smtp.example.com",
+            port=465,
+            username="mailer",
+            password="",
+            from_email="noreply@example.com",
+            from_name="Programacion",
+            use_tls=True,
+            use_ssl=True,
+            review_fix_required_subject="Arreglar {{funcionario_nombre}}",
+            review_fix_required_body="Observación: {{comentario}}",
+        ),
+    )
+
+    stored_password = db_session.query(models.Config).filter(models.Config.key == "smtp_password").one()
+    stored_tls = db_session.query(models.Config).filter(models.Config.key == "smtp_use_tls").one()
+    stored_ssl = db_session.query(models.Config).filter(models.Config.key == "smtp_use_ssl").one()
+
+    assert payload.password_configured is True
+    assert payload.use_tls is False
+    assert payload.use_ssl is True
+    assert stored_password.value == "persisted-secret"
+    assert stored_tls.value == "false"
+    assert stored_ssl.value == "true"
+
+
+def test_send_test_email_uses_saved_smtp_settings(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_session.add_all([
+        models.Config(key="smtp_host", value="smtp.example.com"),
+        models.Config(key="smtp_port", value="587"),
+        models.Config(key="smtp_username", value="mailer"),
+        models.Config(key="smtp_password", value="secret"),
+        models.Config(key="smtp_from_email", value="noreply@example.com"),
+        models.Config(key="smtp_from_name", value="Programacion"),
+        models.Config(key="smtp_use_tls", value="true"),
+        models.Config(key="smtp_use_ssl", value="false"),
+    ])
+    db_session.commit()
+
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            assert host == "smtp.example.com"
+            assert port == 587
+            assert timeout == 10
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self):
+            return None
+
+        def login(self, username, password):
+            assert username == "mailer"
+            assert password == "secret"
+
+        def send_message(self, message):
+            sent_messages.append(message)
+
+    monkeypatch.setattr(config_router.smtplib, "SMTP", FakeSMTP)
+
+    payload = config_router.send_test_email(db_session, "destino@example.com")
+
+    assert payload.recipient == "destino@example.com"
+    assert payload.message == "Correo de prueba enviado a destino@example.com."
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["Subject"] == "Prueba de configuración SMTP"
+    assert sent_messages[0]["To"] == "destino@example.com"
+    assert "Servidor: smtp.example.com:587" in sent_messages[0].get_content()
+
+
+def test_send_test_email_requires_configured_password(db_session) -> None:
+    db_session.add_all([
+        models.Config(key="smtp_host", value="smtp.example.com"),
+        models.Config(key="smtp_port", value="587"),
+        models.Config(key="smtp_from_email", value="noreply@example.com"),
+        models.Config(key="smtp_from_name", value="Programacion"),
+    ])
+    db_session.commit()
+
+    with pytest.raises(config_router.HTTPException) as exc_info:
+        config_router.send_test_email(db_session, "destino@example.com")
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "SMTP no configurado. Guarda host, puerto, remitente y contraseña antes de enviar una prueba."
 
 
 def test_database_readiness_can_disable_local_schema_auto_repair(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

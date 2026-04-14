@@ -45,6 +45,32 @@ export function ProgrammingActivitiesTable({
   calculateCupos,
   formErrors,
 }: ProgrammingActivitiesTableProps) {
+  const normalizePerformanceInput = (rawValue: string) => {
+    const sanitized = rawValue.replace(/\./g, ",").replace(/[^\d,]/g, "");
+    const [integerPart = "", ...decimalParts] = sanitized.split(",");
+
+    if (decimalParts.length === 0) {
+      return sanitized;
+    }
+
+    return `${integerPart},${decimalParts.join("").slice(0, 2)}`;
+  };
+
+  const normalizeAssignedHoursInput = (rawValue: string) => {
+    if (timeUnit === "minutes") {
+      return rawValue.replace(/\D/g, "");
+    }
+
+    const sanitized = rawValue.replace(/\./g, ",").replace(/[^\d,]/g, "");
+    const [integerPart = "", ...decimalParts] = sanitized.split(",");
+
+    if (decimalParts.length === 0) {
+      return sanitized;
+    }
+
+    return `${integerPart},${decimalParts.join("").slice(0, 2)}`;
+  };
+
   const getFilteredActivities = () => {
     let filtered = activitiesList.filter((act) => (act.visible || "SI").toUpperCase() === "SI");
 
@@ -137,7 +163,10 @@ export function ProgrammingActivitiesTable({
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-400" />
-            Cupos Anual
+            <span>
+              Cupos Anual
+              <sup className="ml-0.5 text-[10px] font-semibold text-gray-500 dark:text-gray-400">1</sup>
+            </span>
           </label>
         </div>
 
@@ -209,12 +238,11 @@ export function ProgrammingActivitiesTable({
                 </span>
               </label>
               <input
-                type="number"
-                min="0"
-                step={timeUnit === "hours" ? "0.01" : "1"}
+                type="text"
+                inputMode={timeUnit === "hours" ? "decimal" : "numeric"}
                 value={entry.assignedHours}
                 onChange={(e) => {
-                  const value = e.target.value;
+                  const value = normalizeAssignedHoursInput(e.target.value);
                   if (value.startsWith("-")) {
                     return;
                   }
@@ -244,12 +272,11 @@ export function ProgrammingActivitiesTable({
               <div className={`transition-all duration-300 ease-in-out ${showPerformance ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                 {showPerformance ? (
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
+                    type="text"
+                    inputMode="decimal"
                     value={entry.performance}
                     onChange={(e) => {
-                      const value = e.target.value;
+                      const value = normalizePerformanceInput(e.target.value);
                       if (value.startsWith("-")) {
                         return;
                       }
@@ -260,7 +287,7 @@ export function ProgrammingActivitiesTable({
                         e.preventDefault();
                       }
                     }}
-                    placeholder="Ej: 2"
+                    placeholder="Ej: 0,35"
                     disabled={isReadOnly}
                     className={`w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-700 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-500 dark:disabled:text-gray-500 dark:text-white dark:placeholder-gray-400 ${
                       formErrors[`activity_${entry.id}_performance`] ? "border-red-500 bg-red-50 dark:bg-red-900/30" : "border-gray-200 dark:border-gray-600"
@@ -287,7 +314,10 @@ export function ProgrammingActivitiesTable({
             <div className="md:col-span-1 space-y-2 transition-all duration-300 ease-in-out">
               <label className={`text-sm font-medium text-gray-700 dark:text-gray-300 md:hidden flex items-center gap-2 ${showPerformance ? "opacity-100" : "opacity-50"}`}>
                 <Calendar className="w-4 h-4 text-gray-400" />
-                Cupos Anuales
+                <span>
+                  Cupos Anuales
+                  <sup className="ml-0.5 text-[10px] font-semibold text-gray-500 dark:text-gray-400">1</sup>
+                </span>
               </label>
               <div className={`w-full px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-medium h-[34px] flex items-center transition-all duration-300 ${showPerformance ? "text-gray-700 dark:text-white opacity-100" : "text-gray-400 dark:text-gray-500 justify-center opacity-70"}`}>
                 {showPerformance ? cupos.annual : "-"}
@@ -323,6 +353,11 @@ export function ProgrammingActivitiesTable({
         <Plus className="w-4 h-4" />
         Agregar Actividad
       </button>
+
+      <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+        <sup className="mr-1 text-[10px] font-semibold">1</sup>
+        Es un cálculo aproximado de cupos anuales, esto va a depender de las vacaciones, permisos y capacitaciones de cada funcionario.
+      </p>
     </div>
   );
 }

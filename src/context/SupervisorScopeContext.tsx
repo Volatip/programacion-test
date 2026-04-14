@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { fetchWithAuth, getStoredSession } from "../lib/api";
+import { isReadOnlyRole } from "../lib/userRoles";
 import { useAuth } from "./AuthContext";
 
 const SUPERVISOR_SCOPE_STORAGE_KEY = "supervisor_scope_user_id";
@@ -70,7 +71,7 @@ export function SupervisorScopeProvider({ children }: { children: ReactNode }) {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
 
-  const isSupervisor = user?.role === "supervisor";
+  const isSupervisor = isReadOnlyRole(user?.role);
 
   const setSelectedUserId = useCallback((userId: number | null) => {
     setSelectedUserIdState(userId);

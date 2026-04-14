@@ -36,18 +36,28 @@ export function UserFormModal({
   onStatusChange,
   onPasswordChange,
 }: UserFormModalProps) {
+  const formFieldIds = {
+    name: "user-form-name",
+    rut: "user-form-rut",
+    email: "user-form-email",
+    role: "user-form-role",
+    status: "user-form-status",
+    password: "user-form-password",
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={isEditMode ? "Editar Usuario" : "Nuevo Usuario"}
-      className="max-w-lg"
+      className="max-w-2xl"
     >
-      <form onSubmit={onSubmit} className="p-6 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      <form onSubmit={onSubmit} className="space-y-4 p-5 sm:p-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de Usuario</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor={formFieldIds.name}>Nombre de Usuario</label>
             <input
+              id={formFieldIds.name}
               type="text"
               required
               value={formData.name}
@@ -57,8 +67,9 @@ export function UserFormModal({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">RUT</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor={formFieldIds.rut}>RUT</label>
             <input
+              id={formFieldIds.rut}
               type="text"
               required
               value={formData.rut}
@@ -72,8 +83,9 @@ export function UserFormModal({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Correo Electrónico</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor={formFieldIds.email}>Correo Electrónico</label>
           <input
+            id={formFieldIds.email}
             type="email"
             required
             value={formData.email}
@@ -83,10 +95,11 @@ export function UserFormModal({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Rol</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor={formFieldIds.role}>Rol</label>
             <select
+              id={formFieldIds.role}
               value={formData.role}
               onChange={(e) => onRoleChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
@@ -94,13 +107,15 @@ export function UserFormModal({
               <option value="admin">Administrador</option>
               <option value="medical_coordinator">Coordinador Médico</option>
               <option value="non_medical_coordinator">Coordinador No Médico</option>
+              <option value="revisor">Revisor</option>
               <option value="supervisor">Supervisor</option>
               <option value="user">Usuario</option>
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Estado</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor={formFieldIds.status}>Estado</label>
             <select
+              id={formFieldIds.status}
               value={formData.status}
               onChange={(e) => onStatusChange(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
@@ -112,10 +127,11 @@ export function UserFormModal({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300" htmlFor={formFieldIds.password}>
             {isEditMode ? "Nueva Contraseña (Opcional)" : "Contraseña"}
           </label>
           <input
+            id={formFieldIds.password}
             type="password"
             required={!isEditMode}
             value={formData.password}
@@ -125,7 +141,7 @@ export function UserFormModal({
           />
         </div>
 
-        <div className="pt-4 flex justify-end gap-3">
+        <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onClose}

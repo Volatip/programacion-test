@@ -282,6 +282,14 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
+
+class UserSummary(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -336,6 +344,7 @@ class FuncionarioConsolidated(BaseModel):
     lunch_time_minutes: int
     status: str
     inactive_reason: Optional[str] = None
+    termination_date: Optional[datetime] = None
     active_status_label: Optional[str] = None
     has_future_dismiss_scheduled: bool = False
     future_dismiss_start_date: Optional[datetime] = None
@@ -365,9 +374,11 @@ class GeneralOfficialRow(BaseModel):
     funcionario: str
     title: str
     rut: str
+    dv: Optional[str] = None
     law_code: str
     specialty_sis: str
     hours_per_week: str
+    lunch_time_minutes: int = 0
     status: str
     user_id: Optional[int] = None
     user_ids: list[int] = []
@@ -375,6 +386,9 @@ class GeneralOfficialRow(BaseModel):
     is_scheduled: bool
     programmed_label: str
     contracts: list[ContractDetail] = []
+    review_status: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    reviewed_by_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -458,6 +472,120 @@ class ProgrammingResponse(ProgrammingBase):
     items: List[ProgrammingItemResponse] = []
     created_by_name: Optional[str] = None
     updated_by_name: Optional[str] = None
+    review_status: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    reviewed_by_id: Optional[int] = None
+    reviewed_by_name: Optional[str] = None
+    review_comment: Optional[str] = None
     
     class Config:
         from_attributes = True
+
+
+class ProgrammingReviewRequest(BaseModel):
+    action: str = Field(pattern="^(validated|fix_required)$")
+    comment: Optional[str] = None
+
+
+class ProgrammingReviewEventResponse(BaseModel):
+    id: int
+    programming_id: int
+    action: str
+    comment: Optional[str] = None
+    reviewed_by_id: int
+    reviewed_by_name: Optional[str] = None
+    reviewed_at: datetime
+    email_status: Optional[str] = None
+    email_error: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProgrammingReviewEmailResult(BaseModel):
+    attempted: bool
+    status: str
+    detail: Optional[str] = None
+
+
+class ProgrammingReviewResponse(BaseModel):
+    programming_id: int
+    review_status: str
+    reviewed_at: datetime
+    reviewed_by: UserSummary
+    review_comment: Optional[str] = None
+    notifications_created: int = 0
+    email: ProgrammingReviewEmailResult
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    title: str
+    message: str
+    link: Optional[str] = None
+    payload_json: Optional[str] = None
+    created_at: datetime
+    read_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationSummaryResponse(BaseModel):
+    unread_count: int
+
+
+class NotificationReadRequest(BaseModel):
+    ids: Optional[list[int]] = None
+    all: bool = False
+
+
+class NotificationReadResponse(BaseModel):
+    updated: int
+
+
+class SmtpSettingsResponse(BaseModel):
+    host: str = ""
+    port: int = 0
+    username: str = ""
+    from_email: str = ""
+    from_name: str = ""
+    use_tls: bool = True
+    use_ssl: bool = False
+    password_configured: bool = False
+    review_fix_required_subject: str = ""
+    review_fix_required_body: str = ""
+
+
+class SmtpSettingsUpdate(BaseModel):
+    host: str = Field(min_length=1)
+    port: int = Field(ge=1, le=65535)
+    username: str = ""
+    password: Optional[str] = None
+    from_email: EmailStr
+    from_name: str = Field(min_length=1)
+    use_tls: bool = True
+    use_ssl: bool = False
+    review_fix_required_subject: str = Field(min_length=1)
+    review_fix_required_body: str = Field(min_length=1)
+
+
+class SmtpTestEmailRequest(BaseModel):
+    recipient: EmailStr
+
+
+class SmtpTestEmailResponse(BaseModel):
+    recipient: EmailStr
+    message: str
+
+
+class RRHHDeletionBatchOption(BaseModel):
+    created_at: datetime
+    funcionario_count: int
+    tracked_activity_count: int = 0
+    file_names: list[str] = Field(default_factory=list)
+
+
+class RRHHDeletionBatchListResponse(BaseModel):
+    batches: list[RRHHDeletionBatchOption]

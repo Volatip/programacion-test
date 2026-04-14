@@ -2,9 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   SESSION_STORAGE_KEYS,
-  WS_ORIGIN,
   authApi,
-  buildWsUrl,
   buildWebSocketProtocols,
   clearSession,
   fetchWithAuth,
@@ -17,6 +15,7 @@ describe('session hardening helpers', () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('stores tokens in sessionStorage and keeps user data in localStorage', () => {
@@ -66,9 +65,14 @@ describe('session hardening helpers', () => {
     expect(window.localStorage.getItem(SESSION_STORAGE_KEYS.refreshToken)).toBeNull();
   });
 
-  it('builds websocket bearer subprotocols without query strings', () => {
+  it('builds websocket bearer subprotocols without query strings', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_WS_ORIGIN', 'ws://localhost');
+    vi.stubEnv('VITE_APP_BASE_PATH', '/programacion');
+    const { WS_ORIGIN, buildWebSocketProtocols, buildWsUrl } = await import('./api');
+
     expect(buildWebSocketProtocols('jwt-token')).toEqual(['bearer', 'jwt-token']);
-    expect(buildWsUrl('/ws/info-bar')).toBe(`${WS_ORIGIN}/ws/info-bar`);
+    expect(buildWsUrl('/ws/info-bar')).toBe(`${WS_ORIGIN}/programacion/ws/info-bar`);
     expect(buildWsUrl('/ws/info-bar')).not.toContain('?');
   });
 
@@ -134,6 +138,7 @@ describe('session hardening helpers', () => {
 
   it('builds auth redirects under /programacion when the app is mounted there', async () => {
     vi.resetModules();
+    vi.stubEnv('VITE_APP_BASE_PATH', '/programacion');
     window.history.replaceState({}, '', '/programacion/login');
 
     const { redirectToLogin } = await import('./api');
@@ -168,6 +173,7 @@ describe('session hardening helpers', () => {
 
   it('builds app login redirects under /programacion when the app is mounted there', async () => {
     vi.resetModules();
+    vi.stubEnv('VITE_APP_BASE_PATH', '/programacion');
     window.history.replaceState({}, '', '/programacion/login');
 
     const { buildAppPath, APP_ROUTES } = await import('./appPaths');
@@ -175,13 +181,48 @@ describe('session hardening helpers', () => {
     expect(buildAppPath(APP_ROUTES.login)).toBe('/programacion/login');
   });
 
-  it('keeps local api urls under /api even when the app is mounted under /programacion in local runtime', async () => {
+  it('builds api urls under /programacion/api in mounted server mode', async () => {
     vi.resetModules();
+    vi.stubEnv('VITE_API_ORIGIN', 'http://localhost');
+    vi.stubEnv('VITE_API_BASE_PATH', '/programacion/api');
     window.history.replaceState({}, '', '/programacion/login');
 
     const { buildApiUrl } = await import('./api');
 
-    expect(buildApiUrl('/users/login')).toContain('http://localhost:8000/api/users/login');
-    expect(buildApiUrl('/users/login')).not.toContain('/programacion/api/users/login');
+    expect(buildApiUrl('/users/login')).toBe('http://localhost/programacion/api/users/login');
+  });
+
+  it('keeps API_URL mounted under /programacion outside local runtime', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_API_ORIGIN', 'http://localhost');
+    vi.stubEnv('VITE_API_BASE_PATH', '/programacion/api');
+    window.history.replaceState({}, '', '/programacion/login');
+
+    const { API_URL } = await import('./api');
+
+    expect(API_URL).toBe('http://localhost/programacion/api');
+  });
+
+  it('respects paths that already start with /api', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_API_ORIGIN', 'http://localhost');
+    vi.stubEnv('VITE_API_BASE_PATH', '/programacion/api');
+    window.history.replaceState({}, '', '/programacion/login');
+
+    const { buildApiUrl } = await import('./api');
+
+    expect(buildApiUrl('/api/users/login')).toBe('http://localhost/api/users/login');
+  });
+
+  it('uses a configurable local api base path when provided', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_API_ORIGIN', 'http://127.0.0.1:8000');
+    vi.stubEnv('VITE_API_BASE_PATH', '/api');
+    window.history.replaceState({}, '', '/programacion/login');
+
+    const { API_URL, buildApiUrl } = await import('./api');
+
+    expect(API_URL).toBe('http://127.0.0.1:8000/api');
+    expect(buildApiUrl('/users/login')).toBe('http://127.0.0.1:8000/api/users/login');
   });
 });

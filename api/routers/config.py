@@ -1,6 +1,9 @@
 
 from pathlib import Path
 import logging
+import json
+import smtplib
+from email.message import EmailMessage
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query, Body
 from fastapi.responses import StreamingResponse
@@ -18,7 +21,7 @@ from ..permissions import PermissionChecker
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-PUBLIC_CONFIG_KEYS = {"header_info_text"}
+PUBLIC_CONFIG_KEYS = {"header_info_text", "home_timeline"}
 DEFAULT_CONFIG_LIST_LIMIT = 100
 MAX_CONFIG_LIST_LIMIT = 100
 MAX_EXCEL_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
@@ -30,6 +33,26 @@ ALLOWED_EXCEL_CONTENT_TYPES = {
     "application/octet-stream",
 }
 optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/users/login", auto_error=False)
+SMTP_CONFIG_KEYS = {
+    "host": "smtp_host",
+    "port": "smtp_port",
+    "username": "smtp_username",
+    "password": "smtp_password",
+    "from_email": "smtp_from_email",
+    "from_name": "smtp_from_name",
+    "use_tls": "smtp_use_tls",
+    "use_ssl": "smtp_use_ssl",
+    "review_fix_required_subject": "smtp_review_fix_required_subject",
+    "review_fix_required_body": "smtp_review_fix_required_body",
+}
+
+DEFAULT_REVIEW_FIX_REQUIRED_SUBJECT = "Arreglar programación: {{funcionario_nombre}}"
+DEFAULT_REVIEW_FIX_REQUIRED_BODY = (
+    "Se solicitó arreglar la programación de {{funcionario_nombre}}.\n"
+    "Observación: {{comentario}}\n"
+    "ID programación: {{programming_id}}\n"
+    "Período: {{periodo_nombre}}"
+)
 
 def get_db():
     db = database.SessionLocal()
@@ -116,6 +139,119 @@ def require_admin_config_access(current_user: models.User = Depends(auth.get_cur
     PermissionChecker.require_admin(current_user)
     return current_user
 
+
+def _get_config_value(db: Session, key: str) -> str | None:
+    config_row = db.query(models.Config).filter(models.Config.key == key).first()
+    return config_row.value if config_row else None
+
+
+def get_smtp_settings_payload(db: Session) -> schemas.SmtpSettingsResponse:
+    host = _get_config_value(db, SMTP_CONFIG_KEYS["host"]) or ""
+    port_raw = _get_config_value(db, SMTP_CONFIG_KEYS["port"]) or "0"
+    username = _get_config_value(db, SMTP_CONFIG_KEYS["username"]) or ""
+    from_email = _get_config_value(db, SMTP_CONFIG_KEYS["from_email"]) or ""
+    from_name = _get_config_value(db, SMTP_CONFIG_KEYS["from_name"]) or ""
+    use_tls_raw = _get_config_value(db, SMTP_CONFIG_KEYS["use_tls"]) or "true"
+    use_ssl_raw = _get_config_value(db, SMTP_CONFIG_KEYS["use_ssl"]) or "false"
+    password = _get_config_value(db, SMTP_CONFIG_KEYS["password"])
+    review_fix_required_subject = _get_config_value(db, SMTP_CONFIG_KEYS["review_fix_required_subject"]) or DEFAULT_REVIEW_FIX_REQUIRED_SUBJECT
+    review_fix_required_body = _get_config_value(db, SMTP_CONFIG_KEYS["review_fix_required_body"]) or DEFAULT_REVIEW_FIX_REQUIRED_BODY
+
+    return schemas.SmtpSettingsResponse(
+        host=host,
+        port=int(port_raw) if str(port_raw).strip().isdigit() else 0,
+        username=username,
+        from_email=from_email,
+        from_name=from_name,
+        use_tls=str(use_tls_raw).strip().lower() in {"1", "true", "yes", "si"},
+        use_ssl=str(use_ssl_raw).strip().lower() in {"1", "true", "yes", "si"},
+        password_configured=bool(password),
+        review_fix_required_subject=review_fix_required_subject,
+        review_fix_required_body=review_fix_required_body,
+    )
+
+
+def upsert_smtp_settings(db: Session, payload: schemas.SmtpSettingsUpdate) -> schemas.SmtpSettingsResponse:
+    use_ssl = bool(payload.use_ssl)
+    use_tls = False if use_ssl else bool(payload.use_tls)
+
+    values = {
+        SMTP_CONFIG_KEYS["host"]: payload.host,
+        SMTP_CONFIG_KEYS["port"]: str(payload.port),
+        SMTP_CONFIG_KEYS["username"]: payload.username,
+        SMTP_CONFIG_KEYS["from_email"]: payload.from_email,
+        SMTP_CONFIG_KEYS["from_name"]: payload.from_name,
+        SMTP_CONFIG_KEYS["use_tls"]: json.dumps(use_tls),
+        SMTP_CONFIG_KEYS["use_ssl"]: json.dumps(use_ssl),
+        SMTP_CONFIG_KEYS["review_fix_required_subject"]: payload.review_fix_required_subject,
+        SMTP_CONFIG_KEYS["review_fix_required_body"]: payload.review_fix_required_body,
+    }
+
+    if payload.password is not None and payload.password != "":
+        values[SMTP_CONFIG_KEYS["password"]] = payload.password
+
+    for key, value in values.items():
+        db_config = db.query(models.Config).filter(models.Config.key == key).first()
+        if db_config:
+            db_config.value = value
+        else:
+            db.add(models.Config(key=key, value=value, description="SMTP setting"))
+
+    db.commit()
+    return get_smtp_settings_payload(db)
+
+
+def _require_configured_smtp(db: Session) -> tuple[schemas.SmtpSettingsResponse, str]:
+    settings = get_smtp_settings_payload(db)
+    password = _get_config_value(db, SMTP_CONFIG_KEYS["password"])
+    if not settings.host or not settings.port or not settings.from_email or not settings.password_configured or password is None:
+        raise HTTPException(
+            status_code=400,
+            detail="SMTP no configurado. Guarda host, puerto, remitente y contraseña antes de enviar una prueba.",
+        )
+    return settings, password
+
+
+def _deliver_smtp_message(message: EmailMessage, settings: schemas.SmtpSettingsResponse, password: str) -> None:
+    if settings.use_ssl:
+        with smtplib.SMTP_SSL(settings.host, settings.port, timeout=10) as smtp:
+            if settings.username:
+                smtp.login(settings.username, password)
+            smtp.send_message(message)
+        return
+
+    with smtplib.SMTP(settings.host, settings.port, timeout=10) as smtp:
+        if settings.use_tls:
+            smtp.starttls()
+        if settings.username:
+            smtp.login(settings.username, password)
+        smtp.send_message(message)
+
+
+def send_test_email(db: Session, recipient: str) -> schemas.SmtpTestEmailResponse:
+    settings, password = _require_configured_smtp(db)
+    message = EmailMessage()
+    message["Subject"] = "Prueba de configuración SMTP"
+    message["From"] = f'{settings.from_name} <{settings.from_email}>' if settings.from_name else settings.from_email
+    message["To"] = recipient
+    message.set_content(
+        "Este es un correo de prueba enviado desde Programación.\n\n"
+        f"Servidor: {settings.host}:{settings.port}\n"
+        f"Remitente: {settings.from_email}\n"
+        f"Seguridad: {'SSL' if settings.use_ssl else 'STARTTLS' if settings.use_tls else 'Sin cifrado'}"
+    )
+
+    try:
+        _deliver_smtp_message(message, settings, password)
+    except Exception as exc:
+        logger.warning("No se pudo enviar el correo de prueba a %s", recipient, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"No se pudo enviar el correo de prueba: {exc}") from exc
+
+    return schemas.SmtpTestEmailResponse(
+        recipient=recipient,
+        message=f"Correo de prueba enviado a {recipient}.",
+    )
+
 # Global Config
 @router.get("/configs", response_model=List[schemas.ConfigResponse])
 def read_configs(
@@ -166,6 +302,35 @@ def create_or_update_config(
     db.commit()
     db.refresh(db_config)
     return db_config
+
+
+@router.get("/smtp-settings", response_model=schemas.SmtpSettingsResponse)
+def read_smtp_settings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin_config_access),
+):
+    _ = current_user
+    return get_smtp_settings_payload(db)
+
+
+@router.put("/smtp-settings", response_model=schemas.SmtpSettingsResponse)
+def update_smtp_settings(
+    payload: schemas.SmtpSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin_config_access),
+):
+    _ = current_user
+    return upsert_smtp_settings(db, payload)
+
+
+@router.post("/smtp-settings/test", response_model=schemas.SmtpTestEmailResponse)
+def send_smtp_test_email(
+    payload: schemas.SmtpTestEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin_config_access),
+):
+    _ = current_user
+    return send_test_email(db, payload.recipient)
 
 @router.delete("/configs/{key}")
 def delete_config(

@@ -195,7 +195,11 @@ def read_supervised_user_options(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
-    if not (PermissionChecker.is_admin(current_user) or PermissionChecker.is_supervisor(current_user)):
+    if not (
+        PermissionChecker.is_admin(current_user)
+        or PermissionChecker.is_supervisor(current_user)
+        or PermissionChecker.is_reviewer(current_user)
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permiso para consultar usuarios supervisados.",
@@ -205,7 +209,7 @@ def read_supervised_user_options(
         db.query(models.User)
         .filter(
             models.User.status == "activo",
-            models.User.role != "supervisor",
+            models.User.role.in_(["medical_coordinator", "non_medical_coordinator"]),
         )
         .order_by(models.User.name.asc())
         .all()

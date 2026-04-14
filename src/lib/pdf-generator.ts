@@ -181,8 +181,11 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
   let infoY = infoStartY;
   
   const col1X = margins.page + 5;
-  const col2X = margins.page + 115; 
-  const labelWidth = 35;
+  const col2X = margins.page + 112;
+  const labelWidthCol1 = 35;
+  const labelWidthCol2 = 31;
+  const col1MaxWidth = 55;
+  const col2MaxWidth = pageWidth - margins.page - (col2X + labelWidthCol2) - 6;
   
   doc.setFontSize(fonts.sectionHeader);
   doc.setFont("helvetica", "bold");
@@ -196,10 +199,11 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
   /**
    * Helper to calculate row height
    */
-  const calculateRowHeight = (value: string, maxWidth: number = 65): number => {
-    const textWidth = doc.getTextWidth(value);
+  const calculateRowHeight = (value: string, maxWidth: number): number => {
+    const safeValue = value || "-";
+    const textWidth = doc.getTextWidth(safeValue);
     if (textWidth > maxWidth) {
-      const splitText = doc.splitTextToSize(value, maxWidth);
+      const splitText = doc.splitTextToSize(safeValue, maxWidth);
       return (splitText.length * 3.2) + 1.2;
     }
     return margins.rowHeight;
@@ -208,7 +212,8 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
   /**
    * Helper to draw a label-value row with automatic text wrapping
    */
-  const drawRow = (label: string, value: string, x: number, y: number, maxWidth: number = 65): number => {
+  const drawRow = (label: string, value: string, x: number, y: number, maxWidth: number, labelWidth: number): number => {
+    const safeValue = value || "-";
     doc.setFont("helvetica", "bold");
     doc.setTextColor(colors.text.darkGray);
     doc.text(label, x, y);
@@ -217,14 +222,14 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
     doc.setTextColor(colors.text.black);
     
     const valX = x + labelWidth;
-    const textWidth = doc.getTextWidth(value);
+    const textWidth = doc.getTextWidth(safeValue);
     
     if (textWidth > maxWidth) {
-      const splitText = doc.splitTextToSize(value, maxWidth);
+      const splitText = doc.splitTextToSize(safeValue, maxWidth);
       doc.text(splitText, valX, y);
       return (splitText.length * 3.2) + 1.2;
     } else {
-      doc.text(value, valX, y);
+      doc.text(safeValue, valX, y);
       return margins.rowHeight;
     }
   };
@@ -232,22 +237,17 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
   // Calculate box height through PRECISE simulation using the same logic as drawRow
   doc.setFont("helvetica", "normal"); // Ensure correct font for width calculation
   let simY1 = infoY;
-  simY1 += calculateRowHeight(funcionario.name, 55);
-  simY1 += calculateRowHeight(funcionario.rut);
-  simY1 += calculateRowHeight(funcionario.title, 55);
-  simY1 += calculateRowHeight(funcionario.law);
-  simY1 += calculateRowHeight(prais || "No");
+  simY1 += calculateRowHeight(funcionario.name, col1MaxWidth);
+  simY1 += calculateRowHeight(funcionario.rut, col1MaxWidth);
+  simY1 += calculateRowHeight(funcionario.title, col1MaxWidth);
+  simY1 += calculateRowHeight(funcionario.law, col1MaxWidth);
+  simY1 += calculateRowHeight(prais || "No", col1MaxWidth);
   
   let simY2 = infoY;
   
   let hoursDisplay = contractHoursDisplayText;
   if (!hoursDisplay.includes("hrs") && !hoursDisplay.includes("min")) hoursDisplay += " hrs.";
   
-  // Available width for Col 2 values: PageWidth(210) - Margin(15) - Col2X(130) - LabelWidth(35) = 30
-  // We use a slightly larger limit (35) to avoid aggressive wrapping on short words, but risk slight margin overflow.
-  // Ideally should be 30.
-  const col2MaxWidth = 35; 
-
   simY2 += calculateRowHeight(hoursDisplay, col2MaxWidth);
   
   const groupName = assignedGroupId && assignedGroupId !== "none" 
@@ -278,18 +278,18 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
   let currentY1 = infoY + 6;
   let currentY2 = infoY + 6;
   
-  currentY1 += drawRow("Nombre:", funcionario.name, col1X, currentY1, 55);
-  currentY1 += drawRow("RUT:", funcionario.rut, col1X, currentY1);
-  currentY1 += drawRow("Título:", funcionario.title, col1X, currentY1, 55);
-  currentY1 += drawRow("Ley:", funcionario.law, col1X, currentY1);
-  currentY1 += drawRow("Atención PRAIS:", prais || "No", col1X, currentY1);
+  currentY1 += drawRow("Nombre:", funcionario.name, col1X, currentY1, col1MaxWidth, labelWidthCol1);
+  currentY1 += drawRow("RUT:", funcionario.rut, col1X, currentY1, col1MaxWidth, labelWidthCol1);
+  currentY1 += drawRow("Título:", funcionario.title, col1X, currentY1, col1MaxWidth, labelWidthCol1);
+  currentY1 += drawRow("Ley:", funcionario.law, col1X, currentY1, col1MaxWidth, labelWidthCol1);
+  currentY1 += drawRow("Atención PRAIS:", prais || "No", col1X, currentY1, col1MaxWidth, labelWidthCol1);
 
-  currentY2 += drawRow("Horas Contrato:", hoursDisplay, col2X, currentY2, col2MaxWidth);
-  currentY2 += drawRow("Grupo:", groupName, col2X, currentY2, col2MaxWidth);
+  currentY2 += drawRow("Horas Contrato:", hoursDisplay, col2X, currentY2, col2MaxWidth, labelWidthCol2);
+  currentY2 += drawRow("Grupo:", groupName, col2X, currentY2, col2MaxWidth, labelWidthCol2);
   if (isMedical) {
-    currentY2 += drawRow("Especialidad SIS:", funcionario.sisSpecialty || "-", col2X, currentY2, col2MaxWidth);
+    currentY2 += drawRow("Especialidad SIS:", funcionario.sisSpecialty || "-", col2X, currentY2, col2MaxWidth, labelWidthCol2);
   }
-  currentY2 += drawRow("Estado Asignado:", currentOfficialStatus, col2X, currentY2, col2MaxWidth);
+  currentY2 += drawRow("Estado Asignado:", currentOfficialStatus, col2X, currentY2, col2MaxWidth, labelWidthCol2);
 
   const contentEndY = Math.max(currentY1, currentY2);
   yPos = Math.max(boxStartY + finalBoxHeight + 5, contentEndY + 5);
@@ -317,8 +317,8 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
       startY: yPos,
       body: configData,
       theme: 'plain',
-      styles: { fontSize: 7.5, cellPadding: 0.5 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 }, 1: { cellWidth: 'auto' } },
+      styles: { fontSize: 7.5, cellPadding: 0.5, overflow: 'linebreak' },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 }, 1: { cellWidth: 115 } },
       margin: { left: margins.page, right: margins.page }
     });
     yPos = (docWithTables.lastAutoTable?.finalY ?? yPos) + 6;
@@ -327,12 +327,12 @@ export const generateProgrammingPDF = (data: PDFProgrammingData) => {
   }
 
   // Activities Table Section
-  const validEntries = activityEntries.filter(e => e.assignedHours && parseFloat(e.assignedHours) > 0);
+  const validEntries = activityEntries.filter(e => e.assignedHours && parseFloat(e.assignedHours.replace(',', '.')) > 0);
   
   if (validEntries.length > 0) {
     const tableData = validEntries.map(entry => {
       const cupos = calculateCupos(entry.assignedHours, entry.performance, timeUnit);
-      const val = parseFloat(entry.assignedHours);
+      const val = parseFloat(entry.assignedHours.replace(',', '.'));
       const unitLabel = timeUnit === "hours" 
         ? (val === 1 ? "hr" : "hrs") 
         : (val === 1 ? "min" : "mins");

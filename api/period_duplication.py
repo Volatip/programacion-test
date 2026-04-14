@@ -8,6 +8,12 @@ from . import models
 
 
 COPY_EXCLUDED_COLUMNS = {"id", "created_at", "updated_at"}
+PROGRAMMING_REVIEW_SNAPSHOT_EXCLUDED_COLUMNS = {
+    "review_status",
+    "reviewed_at",
+    "reviewed_by_id",
+    "review_comment",
+}
 
 
 @dataclass
@@ -214,6 +220,7 @@ def duplicate_period_base(db: Session, source_period_id: int, destination_period
                     "period_id": destination_period_id,
                     "assigned_group_id": _require_mapping(group_map, source_programming.assigned_group_id, "grupo asignado"),
                 },
+                exclude=PROGRAMMING_REVIEW_SNAPSHOT_EXCLUDED_COLUMNS,
             )
             db.add(cloned_programming)
             db.flush()

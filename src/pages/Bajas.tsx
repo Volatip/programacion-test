@@ -1,5 +1,6 @@
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { PageHeader } from "../components/ui/PageHeader";
 import {
   dismissReasonsApi,
@@ -295,7 +296,9 @@ export function Bajas() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Bajas" subtitle="Administra motivos, comportamiento y subopciones del flujo de baja de funcionarios" />
+      <PageHeader title="Bajas" subtitle="Administra motivos, comportamiento y subopciones del flujo de baja de funcionarios">
+        <ContextualHelpButton slug="bajas" />
+      </PageHeader>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">{error}</div>}
       {success && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">{success}</div>}

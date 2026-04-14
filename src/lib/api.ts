@@ -1,55 +1,41 @@
 import {
-  APP_BASE_PATH,
   APP_ROUTES,
   buildAppPath,
-  getAppMountPathFromApiBasePath,
-  isLocalDevFrontend,
-  isLocalHostname,
-  joinAppPath,
 } from "./appPaths";
 
-function isLocalFrontendRuntime(): boolean {
-  if (typeof window === "undefined") {
-    return false;
+function normalizeBasePath(path: string | undefined): string {
+  const trimmedPath = path?.trim() ?? "";
+
+  if (!trimmedPath || trimmedPath === "/") {
+    return "";
   }
 
-  return isLocalDevFrontend(window.location, import.meta.env.DEV);
+  const withLeadingSlash = trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
+  return withLeadingSlash.replace(/\/+$/, "");
 }
 
 function getDefaultApiOrigin(): string {
   if (typeof window === "undefined") {
-    return "";
+    return "/programacion";
   }
 
   const protocol = window.location.protocol === "https:" ? "https:" : "http:";
   const hostname = window.location.hostname || "localhost";
 
-  if (isLocalHostname(hostname) && isLocalFrontendRuntime()) {
-    return `${protocol}//${hostname}:8000`;
-  }
-
-  return `${protocol}//${hostname}${window.location.port ? `:${window.location.port}` : ""}`;
-}
-
-function getDefaultApiBasePath(): string {
-  if (typeof window !== "undefined" && isLocalFrontendRuntime()) {
-    return "/api";
-  }
-
-  return joinAppPath(APP_BASE_PATH, "/api");
+  return `${protocol}//${hostname}`;
 }
 
 const DEFAULT_API_ORIGIN = getDefaultApiOrigin();
-const DEFAULT_API_BASE_PATH = getDefaultApiBasePath();
 const rawApiOrigin = import.meta.env.VITE_API_ORIGIN?.trim();
 const rawApiBasePath = import.meta.env.VITE_API_BASE_PATH?.trim();
 const rawWsOrigin = import.meta.env.VITE_WS_ORIGIN?.trim();
+const DEFAULT_API_BASE_PATH = "/programacion/api";
 
 export const API_ORIGIN = rawApiOrigin || DEFAULT_API_ORIGIN;
-export const API_BASE_PATH = rawApiBasePath || DEFAULT_API_BASE_PATH;
+export const API_BASE_PATH = normalizeBasePath(rawApiBasePath) || DEFAULT_API_BASE_PATH;
 export const API_URL = `${API_ORIGIN}${API_BASE_PATH}`;
 export const WS_ORIGIN =
-  rawWsOrigin || `${API_ORIGIN}${getAppMountPathFromApiBasePath(API_BASE_PATH)}`.replace(/^http/i, (protocol) => (protocol.toLowerCase() === "https" ? "wss" : "ws"));
+  rawWsOrigin || API_ORIGIN.replace(/^http/i, (protocol) => (protocol.toLowerCase() === "https" ? "wss" : "ws"));
 
 export function buildApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
@@ -57,12 +43,8 @@ export function buildApiUrl(path: string): string {
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  if (normalizedPath === API_BASE_PATH || normalizedPath.startsWith(`${API_BASE_PATH}/`)) {
+  if (normalizedPath.startsWith("/api")) {
     return `${API_ORIGIN}${normalizedPath}`;
-  }
-
-  if (normalizedPath.startsWith("/api/")) {
-    return `${API_ORIGIN}${APP_BASE_PATH}${normalizedPath}`;
   }
 
   return `${API_URL}${normalizedPath}`;
@@ -74,7 +56,7 @@ export function buildWsUrl(path: string): string {
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${WS_ORIGIN}${normalizedPath}`;
+  return `${WS_ORIGIN}${buildAppPath(normalizedPath)}`;
 }
 
 export function redirectToLogin(locationRef: Pick<Location, "href"> | null = typeof window === "undefined" ? null : window.location): void {
@@ -177,6 +159,100 @@ export interface LoginResponse extends AuthTokens {
   user: AuthUserResponse;
 }
 
+export interface ProgrammingReviewerSummary {
+  id: number;
+  name: string;
+}
+
+export interface ProgrammingReviewEvent {
+  id: number;
+  programming_id: number;
+  action: "validated" | "fix_required";
+  comment?: string | null;
+  reviewed_by_id: number;
+  reviewed_by_name?: string | null;
+  reviewed_at: string;
+  email_status?: string | null;
+  email_error?: string | null;
+}
+
+export interface ProgrammingReviewResponse {
+  programming_id: number;
+  review_status: "validated" | "fix_required";
+  reviewed_at: string;
+  reviewed_by: ProgrammingReviewerSummary;
+  review_comment?: string | null;
+  notifications_created: number;
+  email: {
+    attempted: boolean;
+    status: "sent" | "failed" | "skipped";
+    detail?: string | null;
+  };
+}
+
+export interface NotificationItem {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  link?: string | null;
+  payload_json?: string | null;
+  created_at: string;
+  read_at?: string | null;
+}
+
+export interface NotificationSummary {
+  unread_count: number;
+}
+
+export interface SmtpSettingsResponse {
+  host: string;
+  port: number;
+  username: string;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
+  use_ssl: boolean;
+  password_configured: boolean;
+  review_fix_required_subject: string;
+  review_fix_required_body: string;
+}
+
+export interface SmtpSettingsUpdate {
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  from_email: string;
+  from_name: string;
+  use_tls: boolean;
+  use_ssl: boolean;
+  review_fix_required_subject: string;
+  review_fix_required_body: string;
+}
+
+export interface SmtpTestEmailRequest {
+  recipient: string;
+}
+
+export interface SmtpTestEmailResponse {
+  recipient: string;
+  message: string;
+}
+
+export interface AppConfigResponse {
+  key: string;
+  value: string;
+  description?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AppConfigUpdate {
+  key: string;
+  value: string;
+  description?: string;
+}
+
 export function getStoredSession(): StoredSession {
   const localStorageRef = getStorage("local");
   const sessionStorageRef = getStorage("session");
@@ -269,6 +345,48 @@ export const authApi = {
       body: JSON.stringify({ refresh_token: refreshToken ?? null }),
     });
   },
+};
+
+export const programmingReviewApi = {
+  submit: (programmingId: number, payload: { action: "validated" | "fix_required"; comment?: string }) =>
+    fetchWithAuth(`/programming/${programmingId}/review`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  history: (programmingId: number) => fetchWithAuth(`/programming/${programmingId}/review-history`),
+};
+
+export const notificationsApi = {
+  summary: () => fetchWithAuth("/notifications/summary"),
+  list: (status: "unread" | "all" = "unread") => fetchWithAuth(`/notifications?status=${status}`),
+  markRead: (payload: { ids?: number[]; all?: boolean }) =>
+    fetchWithAuth("/notifications/read", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const smtpSettingsApi = {
+  read: () => fetchWithAuth("/config/smtp-settings"),
+  update: (payload: SmtpSettingsUpdate) =>
+    fetchWithAuth("/config/smtp-settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  sendTest: (payload: SmtpTestEmailRequest) =>
+    fetchWithAuth("/config/smtp-settings/test", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const appConfigApi = {
+  read: (key: string) => fetchWithAuth(`/config/configs/${encodeURIComponent(key)}`),
+  upsert: (payload: AppConfigUpdate) =>
+    fetchWithAuth("/config/configs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };
 
 export async function fetchWithAuth(path: string, options: RequestInit = {}): Promise<Response> {

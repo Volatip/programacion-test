@@ -7,7 +7,7 @@ describe('programmingForm helpers', () => {
     const entries = mapProgrammingItemsToEntries(
       [
         { id: 9, activity_name: 'Visita', specialty: '', assigned_hours: 2, performance: 4 },
-        { id: 3, activity_name: 'Policlínico', specialty: 'Cardiología', assigned_hours: 5, performance: 10 },
+        { id: 3, activity_name: 'Policlínico', specialty: 'Cardiología', assigned_hours: 5.5, performance: 0.35 },
       ],
       'General',
     );
@@ -17,8 +17,8 @@ describe('programmingForm helpers', () => {
         id: 1,
         activity: 'Policlínico',
         specialty: 'Cardiología',
-        assignedHours: '5',
-        performance: '10',
+        assignedHours: '5,5',
+        performance: '0,35',
       },
       {
         id: 2,

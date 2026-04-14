@@ -6,6 +6,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from api import auth, database, models, schemas
+from api.contract_rules import is_law_15076_without_guard_release
 from api.permissions import PermissionChecker
 from api.query_bounds import normalize_limit, normalize_skip
 from api.routers.funcionarios import format_laws_list, get_programmed_details
@@ -24,10 +25,10 @@ def read_general_rows(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth.get_current_active_user),
 ):
-    if not (PermissionChecker.is_admin(current_user) or PermissionChecker.is_supervisor(current_user)):
+    if not (PermissionChecker.is_admin(current_user) or PermissionChecker.is_supervisor(current_user) or PermissionChecker.is_reviewer(current_user)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso denegado. Solo admin y supervisor pueden consultar General.",
+            detail="Acceso denegado. Solo admin, supervisor y revisor pueden consultar General.",
         )
 
     normalized_skip = normalize_skip(skip)
@@ -84,14 +85,19 @@ def read_general_rows(
                 "funcionario": contract.name,
                 "title": contract.title,
                 "rut": contract.rut or "",
+                "dv": contract.dv or None,
                 "specialty_sis": contract.specialty_sis or "Sin Especialidad",
                 "status": contract.status or "activo",
+                "lunch_time_minutes": 0,
                 "laws": [],
                 "hours": [],
                 "contracts": [],
                 "is_scheduled": False,
                 "user_ids": [],
                 "user_names": [],
+                "review_status": None,
+                "reviewed_at": None,
+                "reviewed_by_name": None,
             }
 
         if user.id not in grouped_entries[entry_key]["user_ids"]:
@@ -140,21 +146,33 @@ def read_general_rows(
             )
             if not entry["rut"] and contract.rut:
                 entry["rut"] = contract.rut
+            if not entry.get("dv") and contract.dv:
+                entry["dv"] = contract.dv
             if contract.specialty_sis:
                 entry["specialty_sis"] = contract.specialty_sis
+            if not is_law_15076_without_guard_release(contract.law_code, contract.observations):
+                entry["lunch_time_minutes"] = max(entry["lunch_time_minutes"], contract.lunch_time_minutes or 0)
             if contract.id in scheduled_details:
                 entry["funcionario_id"] = contract.id
                 entry["is_scheduled"] = True
+
+            programming_snapshot = scheduled_details.get(contract.id)
+            if programming_snapshot:
+                entry["review_status"] = programming_snapshot.get("review_status") or entry["review_status"]
+                entry["reviewed_at"] = programming_snapshot.get("reviewed_at") or entry["reviewed_at"]
+                entry["reviewed_by_name"] = programming_snapshot.get("reviewed_by_name") or entry["reviewed_by_name"]
 
     rows = [
         {
             "funcionario_id": entry["funcionario_id"],
             "funcionario": entry["funcionario"],
             "rut": entry["rut"],
+            "dv": entry.get("dv"),
             "title": entry["title"],
             "law_code": format_laws_list(entry["laws"]),
             "specialty_sis": entry["specialty_sis"],
             "hours_per_week": " y ".join([f"{hours} hrs" for hours in entry["hours"] if hours]) or "0 hrs",
+            "lunch_time_minutes": entry["lunch_time_minutes"],
             "status": entry["status"],
             "user_id": entry["user_ids"][0] if entry["user_ids"] else None,
             "user_ids": entry["user_ids"],
@@ -162,6 +180,9 @@ def read_general_rows(
             "is_scheduled": entry["is_scheduled"],
             "programmed_label": "Programado" if entry["is_scheduled"] else "No Programado",
             "contracts": entry["contracts"],
+            "review_status": entry["review_status"],
+            "reviewed_at": entry["reviewed_at"],
+            "reviewed_by_name": entry["reviewed_by_name"],
         }
         for entry in grouped_entries.values()
     ]

@@ -11,7 +11,7 @@ import { ContextualHelpButton } from "../components/contextual-help/ContextualHe
 import { useAuth } from "../context/AuthContext";
 import { dismissReasonsApi, isPartialCommissionSelection, type DismissReason } from "../lib/dismissReasons";
 import { validatePartialCommissionBaseForOfficial } from "../lib/partialCommissionValidation";
-import { isSupervisorRole } from "../lib/userRoles";
+import { isReadOnlyRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 import { useProgrammingCache } from "../context/ProgrammingCacheContext";
@@ -29,7 +29,7 @@ export function Funcionarios() {
   const { officials, addOfficial, removeOfficial, activateOfficial, clearPartialCommission, clearFutureDismiss, searchOfficials, refreshOfficials } = useOfficials();
   const { removeCachedProgramming } = useProgrammingCache();
   const { isReadOnly } = usePeriods();
-  const canManageOfficials = !isSupervisorRole(user?.role);
+  const canManageOfficials = !isReadOnlyRole(user?.role);
   const isReadOnlyView = isReadOnly || !canManageOfficials;
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -333,6 +333,10 @@ export function Funcionarios() {
         inactiveReason: {
           getValue: (func) => func.inactiveReason,
         },
+        terminationDate: {
+          getValue: (func) => func.terminationDateRaw ?? func.terminationDate,
+          compare: compareDateValues,
+        },
         lunchTime: {
           getValue: (func) => func.lunchTime,
           compare: compareSummedNumberValues,
@@ -346,7 +350,13 @@ export function Funcionarios() {
   );
 
   useEffect(() => {
-    if (statusFilter === "activo" && sortState.column === "inactiveReason") {
+    const hiddenColumnsByStatus: Record<string, FuncionariosSortColumn[]> = {
+      activo: ["inactiveReason", "terminationDate"],
+      inactivo: ["lastUpdated"],
+      todos: [],
+    };
+
+    if (hiddenColumnsByStatus[statusFilter]?.includes(sortState.column)) {
       setSortState({ column: "name", direction: "asc" });
     }
   }, [sortState.column, statusFilter]);

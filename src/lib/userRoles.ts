@@ -5,6 +5,7 @@ export function getRoleLabel(role: string | undefined): string {
     admin: "Administrador",
     medical_coordinator: "Coordinador Médico",
     non_medical_coordinator: "Coordinador No Médico",
+    revisor: "Revisor",
     supervisor: "Supervisor",
     user: "Usuario",
     guest: "Invitado"
@@ -19,4 +20,12 @@ export function isAdminRole(role: string | undefined): boolean {
 
 export function isSupervisorRole(role: string | undefined): boolean {
   return role === "supervisor";
+}
+
+export function isReviewerRole(role: string | undefined): boolean {
+  return role === "revisor";
+}
+
+export function isReadOnlyRole(role: string | undefined): boolean {
+  return isSupervisorRole(role) || isReviewerRole(role);
 }

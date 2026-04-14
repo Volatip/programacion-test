@@ -16,6 +16,8 @@ export interface Funcionario {
   lunchTime: string;
   status: string; // Added status
   inactiveReason?: string;
+  terminationDate?: string;
+  terminationDateRaw?: string;
   activeStatusLabel?: string;
   hasFutureDismissScheduled?: boolean;
   futureDismissStartDate?: string;

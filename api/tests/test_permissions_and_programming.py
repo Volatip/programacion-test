@@ -1,10 +1,12 @@
 import asyncio
+from email.message import EmailMessage
 import io
 from datetime import date, datetime
 
 import pandas as pd
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from starlette.datastructures import Headers, UploadFile
 
 from api import auth, main, models, runtime_config, schemas
@@ -115,6 +117,15 @@ def test_public_config_key_remains_readable_without_auth(db_session) -> None:
     response = config_router.read_config("header_info_text", db_session, None)
 
     assert response.value == "Bienvenidos"
+
+
+def test_home_timeline_public_config_key_remains_readable_without_auth(db_session) -> None:
+    db_session.add(models.Config(key="home_timeline", value='[{"title":"Carga","date":"Abr 2026"}]', description="Timeline"))
+    db_session.commit()
+
+    response = config_router.read_config("home_timeline", db_session, None)
+
+    assert response.value == '[{"title":"Carga","date":"Abr 2026"}]'
 
 
 def test_non_public_config_key_requires_admin(db_session) -> None:
@@ -243,6 +254,256 @@ def test_upload_funcionarios_maps_lunch_time_from_supported_rrhh_headers(
     assert funcionario.lunch_time_minutes == expected_minutes
 
 
+def test_upload_funcionarios_updates_existing_rows_when_rut_programable_arrives_as_float(db_session) -> None:
+    period = make_period(name="2026-04-rut-float", month=4, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.commit()
+
+    first_upload = make_excel_upload_file(
+        filename="rrhh-base.xlsx",
+        rows=[
+            {
+                "RUT Programable": "15759391",
+                "DV": "9",
+                "Nombre": "MEDRANO DIAZ JORGE RAFAEL",
+                "Correlativo Contrato": 1,
+                "LEY": "19664",
+                "Días de Permisos Administrativos": 12,
+            },
+            {
+                "RUT Programable": "15759391",
+                "DV": "9",
+                "Nombre": "MEDRANO DIAZ JORGE RAFAEL",
+                "Correlativo Contrato": 2,
+                "LEY": "15076",
+                "Días de Permisos Administrativos": 12,
+            },
+        ],
+    )
+
+    second_upload = make_excel_upload_file(
+        filename="rrhh-reprogramacion.xlsx",
+        rows=[
+            {
+                "RUT Programable": 15759391.0,
+                "DV": 9.0,
+                "Nombre": "MEDRANO DIAZ JORGE RAFAEL",
+                "Correlativo Contrato": 1.0,
+                "LEY": "19664",
+                "Días de Permisos Administrativos": 6,
+            },
+            {
+                "RUT Programable": 15759391.0,
+                "DV": 9.0,
+                "Nombre": "MEDRANO DIAZ JORGE RAFAEL",
+                "Correlativo Contrato": 2.0,
+                "LEY": "15076",
+                "Días de Permisos Administrativos": 3,
+            },
+        ],
+    )
+
+    first_payload = asyncio.run(
+        funcionarios_router.upload_funcionarios(
+            file=first_upload,
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=500, role="admin"),
+        )
+    )
+    second_payload = asyncio.run(
+        funcionarios_router.upload_funcionarios(
+            file=second_upload,
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=501, role="admin"),
+        )
+    )
+
+    funcionarios = db_session.query(models.Funcionario).filter(models.Funcionario.period_id == period.id).order_by(models.Funcionario.contract_correlative.asc()).all()
+
+    assert first_payload["registros_creados"] == 2
+    assert first_payload["registros_actualizados"] == 0
+    assert second_payload["registros_creados"] == 0
+    assert second_payload["registros_actualizados"] == 2
+    assert len(funcionarios) == 2
+    assert [funcionario.rut for funcionario in funcionarios] == ["15759391", "15759391"]
+    assert [funcionario.dv for funcionario in funcionarios] == ["9", "9"]
+    assert [funcionario.administrative_days for funcionario in funcionarios] == [6, 3]
+
+
+def test_delete_latest_rrhh_import_removes_only_last_created_batch(db_session) -> None:
+    period = make_period(name="2026-05-delete-last-import", month=5, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.commit()
+
+    first_upload = make_excel_upload_file(
+        filename="primer-lote.xlsx",
+        rows=[
+            {"RUT Programable": "11111111", "DV": "1", "Nombre": "Ana Uno", "Correlativo Contrato": 1},
+        ],
+    )
+    second_upload = make_excel_upload_file(
+        filename="segundo-lote.xlsx",
+        rows=[
+            {"RUT Programable": "22222222", "DV": "2", "Nombre": "Beto Dos", "Correlativo Contrato": 1},
+            {"RUT Programable": "33333333", "DV": "3", "Nombre": "Carla Tres", "Correlativo Contrato": 1},
+        ],
+    )
+
+    asyncio.run(
+        funcionarios_router.upload_funcionarios(
+            file=first_upload,
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=510, role="admin"),
+        )
+    )
+    asyncio.run(
+        funcionarios_router.upload_funcionarios(
+            file=second_upload,
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=511, role="admin"),
+        )
+    )
+
+    payload = funcionarios_router.delete_latest_rrhh_import(
+        period_id=period.id,
+        db=db_session,
+        current_user=make_user(user_id=512, role="admin"),
+    )
+
+    remaining_ruts = {
+        funcionario.rut
+        for funcionario in db_session.query(models.Funcionario).filter(models.Funcionario.period_id == period.id).all()
+    }
+    latest_activity = db_session.query(models.Activity).filter(models.Activity.type == "rrhh_import_batch").order_by(models.Activity.id.desc()).first()
+
+    assert payload["deleted_count"] == 2
+    assert remaining_ruts == {"11111111"}
+    assert latest_activity is not None
+    assert "revertida" in latest_activity.description.lower()
+    assert '"deleted_count": 2' in (latest_activity.details or "")
+
+
+def test_delete_latest_rrhh_import_blocks_when_created_rows_have_dependencies(db_session) -> None:
+    period = make_period(name="2026-06-delete-blocked", month=6, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.commit()
+
+    upload = make_excel_upload_file(
+        filename="dependencias.xlsx",
+        rows=[
+            {"RUT Programable": "44444444", "DV": "4", "Nombre": "Dependencia Uno", "Correlativo Contrato": 1},
+        ],
+    )
+
+    asyncio.run(
+        funcionarios_router.upload_funcionarios(
+            file=upload,
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=520, role="admin"),
+        )
+    )
+
+    funcionario = db_session.query(models.Funcionario).filter(models.Funcionario.period_id == period.id).one()
+    db_session.add(models.UserOfficial(user_id=900, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        funcionarios_router.delete_latest_rrhh_import(
+            period_id=period.id,
+            db=db_session,
+            current_user=make_user(user_id=521, role="admin"),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "dependencias" in exc_info.value.detail.lower()
+    assert db_session.query(models.Funcionario).filter(models.Funcionario.id == funcionario.id).count() == 1
+
+
+def test_list_rrhh_deletion_batches_returns_only_dependency_free_created_at_groups(db_session) -> None:
+    period = make_period(name="2026-07-delete-batches", month=7, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.commit()
+
+    reversible_created_at = datetime(2026, 7, 10, 9, 0, 0)
+    blocked_created_at = datetime(2026, 7, 11, 10, 30, 0)
+
+    reversible_one = models.Funcionario(name="Reversible Uno", title="Médico", rut="70000001", period_id=period.id, created_at=reversible_created_at)
+    reversible_two = models.Funcionario(name="Reversible Dos", title="Médico", rut="70000002", period_id=period.id, created_at=reversible_created_at)
+    blocked = models.Funcionario(name="Bloqueado", title="Médico", rut="70000003", period_id=period.id, created_at=blocked_created_at)
+    db_session.add_all([reversible_one, reversible_two, blocked])
+    db_session.flush()
+
+    db_session.add(models.UserOfficial(user_id=777, funcionario_id=blocked.id))
+    db_session.add(
+        models.Activity(
+            user_id=1,
+            type="rrhh_import_batch",
+            description="Carga de RRHH",
+            details='{"period_id": %d, "created_ids": [%d, %d], "file_name": "lote-historico.xlsx"}' % (period.id, reversible_one.id, reversible_two.id),
+        )
+    )
+    db_session.commit()
+
+    payload = funcionarios_router.list_rrhh_deletion_batches(
+        period_id=period.id,
+        db=db_session,
+        current_user=make_user(user_id=530, role="admin"),
+    )
+
+    assert len(payload["batches"]) == 1
+    assert payload["batches"][0]["created_at"] == reversible_created_at.replace(tzinfo=funcionarios_router.UTC)
+    assert payload["batches"][0]["funcionario_count"] == 2
+    assert payload["batches"][0]["tracked_activity_count"] == 1
+    assert payload["batches"][0]["file_names"] == ["lote-historico.xlsx"]
+
+
+def test_delete_rrhh_import_by_created_at_removes_selected_batch_and_marks_activity_reverted(db_session) -> None:
+    period = make_period(name="2026-08-delete-by-created-at", month=8, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.commit()
+
+    target_created_at = datetime(2026, 8, 15, 8, 45, 0)
+    remaining_created_at = datetime(2026, 8, 16, 8, 45, 0)
+
+    removable_one = models.Funcionario(name="Eliminar Uno", title="Médico", rut="80000001", period_id=period.id, created_at=target_created_at)
+    removable_two = models.Funcionario(name="Eliminar Dos", title="Médico", rut="80000002", period_id=period.id, created_at=target_created_at)
+    remaining = models.Funcionario(name="Permanece", title="Médico", rut="80000003", period_id=period.id, created_at=remaining_created_at)
+    db_session.add_all([removable_one, removable_two, remaining])
+    db_session.flush()
+
+    activity = models.Activity(
+        user_id=1,
+        type="rrhh_import_batch",
+        description="Carga de RRHH",
+        details='{"period_id": %d, "created_ids": [%d, %d], "file_name": "rrhh-antiguo.xlsx"}' % (period.id, removable_one.id, removable_two.id),
+    )
+    db_session.add(activity)
+    db_session.commit()
+
+    payload = funcionarios_router.delete_rrhh_import_by_created_at(
+        created_at=target_created_at.isoformat(),
+        period_id=period.id,
+        db=db_session,
+        current_user=make_user(user_id=531, role="admin"),
+    )
+
+    remaining_ruts = {
+        funcionario.rut
+        for funcionario in db_session.query(models.Funcionario).filter(models.Funcionario.period_id == period.id).all()
+    }
+    refreshed_activity = db_session.query(models.Activity).filter(models.Activity.id == activity.id).one()
+
+    assert payload["deleted_count"] == 2
+    assert remaining_ruts == {"80000003"}
+    assert "revertida" in refreshed_activity.description.lower()
+    assert '"deleted_count": 2' in (refreshed_activity.details or "")
+
+
 def test_resolve_user_scope_defaults_admin_to_own_scope_and_allows_explicit_override() -> None:
     admin = make_user(user_id=1, role="admin")
 
@@ -344,6 +605,636 @@ def test_read_funcionarios_allows_supervisor_global_read_scope(db_session) -> No
     assert {item["rut"] for item in payload} == {"71000001", "71000002"}
 
 
+def test_read_funcionarios_excludes_law_15076_lunch_minutes_without_guard_release(db_session) -> None:
+    user = make_user(user_id=403, role="user")
+    period = make_period(name="2026-08", month=8, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+
+    excluded_contract = models.Funcionario(
+        name="Andrea Colación",
+        title="Enfermera",
+        rut="71000003",
+        dv="K",
+        period_id=period.id,
+        law_code="15076",
+        hours_per_week=11,
+        lunch_time_minutes=60,
+        observations="",
+        status="activo",
+        is_active_roster=True,
+    )
+    included_contract = models.Funcionario(
+        name="Andrea Colación",
+        title="Enfermera",
+        rut="71000003",
+        dv="K",
+        period_id=period.id,
+        law_code="19664",
+        hours_per_week=22,
+        lunch_time_minutes=30,
+        observations="",
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([excluded_contract, included_contract])
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=excluded_contract.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=included_contract.id),
+    ])
+    db_session.commit()
+
+    payload = funcionarios_router.read_funcionarios(period_id=period.id, db=db_session, current_user=user)
+
+    assert len(payload) == 1
+    assert payload[0]["lunch_time_minutes"] == 30
+
+
+def test_read_funcionarios_keeps_law_15076_lunch_minutes_with_guard_release(db_session) -> None:
+    user = make_user(user_id=404, role="user")
+    period = make_period(name="2026-09", month=9, status="ACTIVO", is_active=True)
+    db_session.add_all([user, period])
+    db_session.flush()
+
+    released_contract = models.Funcionario(
+        name="Bruno Colación",
+        title="Enfermero",
+        rut="71000004",
+        dv="K",
+        period_id=period.id,
+        law_code="15076",
+        hours_per_week=11,
+        lunch_time_minutes=60,
+        observations="Liberado de guardia",
+        status="activo",
+        is_active_roster=True,
+    )
+    regular_contract = models.Funcionario(
+        name="Bruno Colación",
+        title="Enfermero",
+        rut="71000004",
+        dv="K",
+        period_id=period.id,
+        law_code="19664",
+        hours_per_week=22,
+        lunch_time_minutes=30,
+        observations="",
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([released_contract, regular_contract])
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=released_contract.id),
+        models.UserOfficial(user_id=user.id, funcionario_id=regular_contract.id),
+    ])
+    db_session.commit()
+
+    payload = funcionarios_router.read_funcionarios(period_id=period.id, db=db_session, current_user=user)
+
+    assert len(payload) == 1
+    assert payload[0]["lunch_time_minutes"] == 60
+
+
+def test_permission_checker_identifies_reviewer_role() -> None:
+    reviewer = make_user(user_id=900, role="revisor")
+
+    assert PermissionChecker.is_reviewer(reviewer) is True
+    assert PermissionChecker.is_read_only_role(reviewer) is True
+
+
+def test_check_can_edit_programming_blocks_reviewer(db_session) -> None:
+    reviewer = make_user(user_id=901, role="revisor")
+    period = make_period(name="2026-10", month=10, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Reviewer Target",
+        title="Enfermero",
+        rut="90000001",
+        period=period,
+        status="activo",
+    )
+    db_session.add_all([reviewer, period, funcionario])
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        PermissionChecker.check_can_edit_programming(reviewer, funcionario.id, db_session)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "El rol revisor solo puede acceder en modo lectura operacional."
+
+
+def test_review_programming_persists_snapshot_and_notifications_without_rollback_on_email_failure(db_session, monkeypatch) -> None:
+    reviewer = make_user(user_id=902, role="revisor")
+    assigned_user = make_user(user_id=903, role="user")
+    period = make_period(name="2026-11", month=11, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Ana Revisada",
+        title="Enfermera",
+        rut="90000002",
+        period=period,
+        status="activo",
+    )
+    db_session.add_all([reviewer, assigned_user, period, funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        created_by_id=assigned_user.id,
+        updated_by_id=assigned_user.id,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    def fake_send(*args, **kwargs):
+        return True, "failed", "smtp offline"
+
+    monkeypatch.setattr(programming_router, "send_fix_required_email", fake_send)
+
+    response = programming_router.review_programming(
+        programming.id,
+        schemas.ProgrammingReviewRequest(action="fix_required", comment="Falta detalle"),
+        db_session,
+        reviewer,
+    )
+
+    db_session.refresh(programming)
+    review_event = db_session.query(models.ProgrammingReviewEvent).one()
+    notification = db_session.query(models.UserNotification).one()
+
+    assert response.review_status == "fix_required"
+    assert response.notifications_created == 1
+    assert response.email.status == "failed"
+    assert programming.review_status == "fix_required"
+    assert programming.review_comment == "Falta detalle"
+    assert review_event.email_status == "failed"
+    assert review_event.email_error == "smtp offline"
+    assert notification.user_id == assigned_user.id
+
+
+def test_review_programming_validated_persists_snapshot_and_audit_event(db_session) -> None:
+    reviewer = make_user(user_id=906, role="revisor")
+    assigned_user = make_user(user_id=907, role="user")
+    period = make_period(name="2027-01", month=1, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Valentina Validada",
+        title="Enfermera",
+        rut="90000004",
+        period=period,
+        status="activo",
+    )
+    db_session.add_all([reviewer, assigned_user, period, funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        created_by_id=assigned_user.id,
+        updated_by_id=assigned_user.id,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    response = programming_router.review_programming(
+        programming.id,
+        schemas.ProgrammingReviewRequest(action="validated"),
+        db_session,
+        reviewer,
+    )
+
+    db_session.refresh(programming)
+    review_event = db_session.query(models.ProgrammingReviewEvent).one()
+
+    assert response.review_status == "validated"
+    assert response.notifications_created == 0
+    assert response.email.attempted is False
+    assert response.email.status == "skipped"
+    assert programming.review_status == "validated"
+    assert programming.reviewed_by_id == reviewer.id
+    assert review_event.action == "validated"
+    assert review_event.reviewed_by_id == reviewer.id
+    assert review_event.email_status == "skipped"
+    assert db_session.query(models.UserNotification).count() == 0
+
+
+def test_update_programming_resets_fix_required_to_pending_for_re_review(db_session) -> None:
+    reviewer = make_user(user_id=918, role="revisor")
+    assigned_user = make_user(user_id=919, role="user")
+    period = make_period(name="2027-06", month=6, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Paula Pendiente",
+        title="Enfermera",
+        rut="90000009",
+        period=period,
+        status="activo",
+    )
+    db_session.add_all([reviewer, assigned_user, period, funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        version=3,
+        created_by_id=assigned_user.id,
+        updated_by_id=assigned_user.id,
+        review_status="fix_required",
+        reviewed_at=datetime(2027, 6, 10, 9, 30, 0),
+        reviewed_by_id=reviewer.id,
+        review_comment="Ajustar observación",
+    )
+    db_session.add(programming)
+    db_session.flush()
+    db_session.add(models.ProgrammingReviewEvent(
+        programming_id=programming.id,
+        action="fix_required",
+        comment="Ajustar observación",
+        reviewed_by_id=reviewer.id,
+        reviewed_at=datetime(2027, 6, 10, 9, 30, 0),
+        email_status="sent",
+    ))
+    db_session.commit()
+
+    response = programming_router.update_programming(
+        programming.id,
+        schemas.ProgrammingUpdate(version=3, observation="Corregido por usuario"),
+        db_session,
+        assigned_user,
+    )
+
+    db_session.refresh(programming)
+
+    assert response.review_status == "pending"
+    assert programming.review_status == "pending"
+    assert programming.reviewed_at is None
+    assert programming.reviewed_by_id is None
+    assert programming.review_comment is None
+    assert programming.observation == "Corregido por usuario"
+    assert db_session.query(models.ProgrammingReviewEvent).count() == 1
+
+
+def test_update_programming_keeps_validated_snapshot_when_not_returning_from_fix(db_session) -> None:
+    reviewer = make_user(user_id=920, role="revisor")
+    assigned_user = make_user(user_id=921, role="user")
+    period = make_period(name="2027-07", month=7, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Valeria Validada",
+        title="Enfermera",
+        rut="90000010",
+        period=period,
+        status="activo",
+    )
+    db_session.add_all([reviewer, assigned_user, period, funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+
+    reviewed_at = datetime(2027, 7, 4, 11, 0, 0)
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        version=2,
+        created_by_id=assigned_user.id,
+        updated_by_id=assigned_user.id,
+        review_status="validated",
+        reviewed_at=reviewed_at,
+        reviewed_by_id=reviewer.id,
+        review_comment=None,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    response = programming_router.update_programming(
+        programming.id,
+        schemas.ProgrammingUpdate(version=2, observation="Ajuste administrativo"),
+        db_session,
+        assigned_user,
+    )
+
+    db_session.refresh(programming)
+
+    assert response.review_status == "validated"
+    assert programming.review_status == "validated"
+    assert programming.reviewed_at == reviewed_at
+    assert programming.reviewed_by_id == reviewer.id
+
+
+def test_review_programming_rejects_historical_periods(db_session) -> None:
+    reviewer = make_user(user_id=916, role="revisor")
+    assigned_user = make_user(user_id=917, role="user")
+    historical_period = make_period(name="2027-05", month=5, status="ANTIGUO", is_active=False)
+    funcionario = models.Funcionario(
+        name="Hugo Histórico",
+        title="Enfermero",
+        rut="90000008",
+        period=historical_period,
+        status="activo",
+    )
+    db_session.add_all([reviewer, assigned_user, historical_period, funcionario])
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+
+    programming = models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=historical_period.id,
+        created_by_id=assigned_user.id,
+        updated_by_id=assigned_user.id,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        programming_router.review_programming(
+            programming.id,
+            schemas.ProgrammingReviewRequest(action="validated"),
+            db_session,
+            reviewer,
+        )
+
+    db_session.refresh(programming)
+
+    assert exc_info.value.status_code == 409
+    assert "no está activo" in exc_info.value.detail
+    assert programming.review_status is None
+    assert programming.reviewed_at is None
+    assert programming.reviewed_by_id is None
+    assert db_session.query(models.ProgrammingReviewEvent).count() == 0
+
+
+def test_programming_review_request_rejects_multiple_terminal_actions() -> None:
+    with pytest.raises(ValidationError):
+        schemas.ProgrammingReviewRequest(action="validated,fix_required")
+
+
+def test_resolve_review_notification_recipients_fans_out_by_rut_and_period_only(db_session) -> None:
+    period = make_period(name="2027-02", month=2, status="ACTIVO", is_active=True)
+    target_user_a = make_user(user_id=908, role="user")
+    target_user_b = make_user(user_id=909, role="user")
+    unrelated_user = make_user(user_id=910, role="user")
+    db_session.add_all([period, target_user_a, target_user_b, unrelated_user])
+    db_session.flush()
+
+    target_contract = models.Funcionario(
+        name="Ana Alcance",
+        title="Enfermera",
+        rut="90000005",
+        period_id=period.id,
+        status="activo",
+    )
+    related_contract = models.Funcionario(
+        name="Ana Alcance",
+        title="Enfermera",
+        rut="90000005",
+        period_id=period.id,
+        status="activo",
+    )
+    unrelated_contract = models.Funcionario(
+        name="Bruno Fuera Alcance",
+        title="Enfermero",
+        rut="90000006",
+        period_id=period.id,
+        status="activo",
+    )
+    db_session.add_all([target_contract, related_contract, unrelated_contract])
+    db_session.flush()
+    db_session.add_all([
+        models.UserOfficial(user_id=target_user_a.id, funcionario_id=target_contract.id),
+        models.UserOfficial(user_id=target_user_a.id, funcionario_id=related_contract.id),
+        models.UserOfficial(user_id=target_user_b.id, funcionario_id=related_contract.id),
+        models.UserOfficial(user_id=unrelated_user.id, funcionario_id=unrelated_contract.id),
+    ])
+
+    programming = models.Programming(
+        funcionario_id=target_contract.id,
+        period_id=period.id,
+        created_by_id=target_user_a.id,
+        updated_by_id=target_user_a.id,
+    )
+    db_session.add(programming)
+    db_session.commit()
+
+    recipients = programming_router.resolve_review_notification_recipients(db_session, programming)
+
+    assert [recipient.id for recipient in recipients] == [target_user_a.id, target_user_b.id]
+
+
+def test_send_fix_required_email_targets_all_assigned_recipients(db_session, monkeypatch) -> None:
+    reviewer = make_user(user_id=911, role="revisor")
+    recipient_a = make_user(user_id=912, role="user")
+    recipient_a.email = "ana@example.com"
+    recipient_b = make_user(user_id=913, role="user")
+    recipient_b.email = "bruno@example.com"
+    period = make_period(name="2027-03", month=3, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Correo Revisión",
+        title="Enfermera",
+        rut="90000007",
+        period=period,
+        status="activo",
+    )
+    programming = models.Programming(
+        funcionario=funcionario,
+        period=period,
+        created_by_id=reviewer.id,
+        updated_by_id=reviewer.id,
+    )
+    db_session.add_all([
+        reviewer,
+        recipient_a,
+        recipient_b,
+        period,
+        funcionario,
+        programming,
+        models.Config(key="smtp_host", value="smtp.example.com", description=""),
+        models.Config(key="smtp_port", value="587", description=""),
+        models.Config(key="smtp_username", value="mailer", description=""),
+        models.Config(key="smtp_password", value="secret", description=""),
+        models.Config(key="smtp_from_email", value="noreply@example.com", description=""),
+        models.Config(key="smtp_from_name", value="Programación", description=""),
+        models.Config(key="smtp_use_tls", value="true", description=""),
+        models.Config(key="smtp_use_ssl", value="false", description=""),
+        models.Config(key="smtp_review_fix_required_subject", value="Acción requerida: {{funcionario_nombre}}", description=""),
+        models.Config(key="smtp_review_fix_required_body", value="Comentario: {{comentario}}\nPeriodo: {{periodo_nombre}}\nID: {{programming_id}}", description=""),
+    ])
+    db_session.commit()
+
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            assert host == "smtp.example.com"
+            assert port == 587
+            assert timeout == 10
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def starttls(self):
+            return None
+
+        def login(self, username, password):
+            assert username == "mailer"
+            assert password == "secret"
+
+        def send_message(self, message):
+            sent_messages.append(message)
+
+    monkeypatch.setattr(programming_router.smtplib, "SMTP", FakeSMTP)
+
+    attempted, email_status, email_detail = programming_router.send_fix_required_email(
+        db_session,
+        recipients=[recipient_a, recipient_b],
+        programming=programming,
+        comment="Corregir turno",
+    )
+
+    assert attempted is True
+    assert email_status == "sent"
+    assert email_detail is None
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["Subject"] == "Acción requerida: Correo Revisión"
+    assert sent_messages[0]["To"] == "ana@example.com, bruno@example.com"
+    assert "Corregir turno" in sent_messages[0].get_content()
+    assert "Periodo: 2027-03" in sent_messages[0].get_content()
+
+
+def test_send_fix_required_email_supports_ssl_transport(db_session, monkeypatch) -> None:
+    reviewer = make_user(user_id=950, role="revisor")
+    recipient = make_user(user_id=951, role="user")
+    recipient.email = "ssl@example.com"
+    period = make_period(name="2027-05", month=5, status="ACTIVO", is_active=True)
+    funcionario = models.Funcionario(
+        name="Correo SSL",
+        title="Matrona",
+        rut="90000010",
+        period=period,
+        status="activo",
+    )
+    programming = models.Programming(
+        funcionario=funcionario,
+        period=period,
+        created_by_id=reviewer.id,
+        updated_by_id=reviewer.id,
+    )
+    db_session.add_all([
+        reviewer,
+        recipient,
+        period,
+        funcionario,
+        programming,
+        models.Config(key="smtp_host", value="smtp.secure.example.com", description=""),
+        models.Config(key="smtp_port", value="465", description=""),
+        models.Config(key="smtp_username", value="mailer", description=""),
+        models.Config(key="smtp_password", value="secret", description=""),
+        models.Config(key="smtp_from_email", value="noreply@example.com", description=""),
+        models.Config(key="smtp_from_name", value="Programación", description=""),
+        models.Config(key="smtp_use_tls", value="false", description=""),
+        models.Config(key="smtp_use_ssl", value="true", description=""),
+    ])
+    db_session.commit()
+
+    sent_messages: list[EmailMessage] = []
+
+    class FakeSMTPSSL:
+        def __init__(self, host, port, timeout):
+            assert host == "smtp.secure.example.com"
+            assert port == 465
+            assert timeout == 10
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def login(self, username, password):
+            assert username == "mailer"
+            assert password == "secret"
+
+        def send_message(self, message):
+            sent_messages.append(message)
+
+    monkeypatch.setattr(programming_router.smtplib, "SMTP_SSL", FakeSMTPSSL)
+
+    attempted, email_status, email_detail = programming_router.send_fix_required_email(
+        db_session,
+        recipients=[recipient],
+        programming=programming,
+        comment=None,
+    )
+
+    assert attempted is True
+    assert email_status == "sent"
+    assert email_detail is None
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["Subject"] == "Arreglar programación: Correo SSL"
+
+
+def test_general_rows_include_review_snapshot_for_reviewer(db_session) -> None:
+    reviewer = make_user(user_id=904, role="revisor")
+    assigned_user = make_user(user_id=905, role="user")
+    period = make_period(name="2026-12", month=12, status="ACTIVO", is_active=True)
+    db_session.add_all([reviewer, assigned_user, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="General Review",
+        title="Enfermera",
+        rut="90000003",
+        period_id=period.id,
+        status="activo",
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+    db_session.add(models.Programming(
+        funcionario_id=funcionario.id,
+        period_id=period.id,
+        review_status="validated",
+        reviewed_at=datetime(2026, 12, 10, 9, 0, 0),
+        reviewed_by_id=reviewer.id,
+    ))
+    db_session.commit()
+
+    rows = general_router.read_general_rows(period_id=period.id, db=db_session, current_user=reviewer)
+
+    assert len(rows) == 1
+    assert rows[0]["review_status"] == "validated"
+    assert rows[0]["reviewed_by_name"] == reviewer.name
+
+
+def test_general_rows_show_neutral_review_state_without_history(db_session) -> None:
+    reviewer = make_user(user_id=914, role="revisor")
+    assigned_user = make_user(user_id=915, role="user")
+    period = make_period(name="2027-04", month=4, status="ACTIVO", is_active=True)
+    db_session.add_all([reviewer, assigned_user, period])
+    db_session.flush()
+
+    funcionario = models.Funcionario(
+        name="General Neutral",
+        title="Enfermera",
+        rut="90000008",
+        period_id=period.id,
+        status="activo",
+    )
+    db_session.add(funcionario)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=assigned_user.id, funcionario_id=funcionario.id))
+    db_session.commit()
+
+    rows = general_router.read_general_rows(period_id=period.id, db=db_session, current_user=reviewer)
+
+    assert len(rows) == 1
+    assert rows[0]["review_status"] is None
+    assert rows[0]["reviewed_at"] is None
+    assert rows[0]["reviewed_by_name"] is None
+
+
 def test_search_funcionarios_caps_results_without_breaking_default_flow(db_session) -> None:
     user = make_user(user_id=41, role="user")
     period = make_period(name="2026-04", month=4, status="ACTIVO", is_active=True)
@@ -378,6 +1269,81 @@ def test_search_funcionarios_caps_results_without_breaking_default_flow(db_sessi
     )
 
     assert len(payload) == funcionarios_router.MAX_SEARCH_RESULTS_LIMIT
+
+
+def test_search_funcionarios_matches_name_tokens_in_any_order(db_session) -> None:
+    admin = make_user(user_id=411, role="admin")
+    period = make_period(name="2026-05-token-search", month=5, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, period])
+    db_session.flush()
+
+    target = models.Funcionario(
+        name="MERINO RIOS PABLO ANDRES",
+        title="Enfermero",
+        rut="61000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    distractor = models.Funcionario(
+        name="PABLO HERRERA",
+        title="Enfermero",
+        rut="61000002",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([target, distractor])
+    db_session.commit()
+
+    payload_merino_pablo = funcionarios_router.search_funcionarios(
+        q="merino pablo",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=admin,
+    )
+    payload_pablo_merino = funcionarios_router.search_funcionarios(
+        q="pablo merino",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=admin,
+    )
+
+    assert [item["rut"] for item in payload_merino_pablo] == ["61000001"]
+    assert [item["rut"] for item in payload_pablo_merino] == ["61000001"]
+
+
+def test_search_funcionarios_keeps_rut_search_behavior(db_session) -> None:
+    admin = make_user(user_id=412, role="admin")
+    period = make_period(name="2026-05-rut-search", month=5, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, period])
+    db_session.flush()
+
+    target = models.Funcionario(
+        name="MERINO RIOS PABLO ANDRES",
+        title="Enfermero",
+        rut="62000001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(target)
+    db_session.commit()
+
+    payload = funcionarios_router.search_funcionarios(
+        q="62000001-K",
+        period_id=period.id,
+        search_mode="global",
+        db=db_session,
+        current_user=admin,
+    )
+
+    assert [item["rut"] for item in payload] == ["62000001"]
 
 
 def test_read_groups_allows_supervisor_global_read_scope(db_session) -> None:
@@ -507,20 +1473,88 @@ def test_read_programmings_filters_supervisor_by_explicit_user_scope(db_session)
     assert payload[0].funcionario_id == funcionario_a.id
 
 
+def test_read_programmings_allows_user_to_fetch_sibling_contract_programming_with_same_rut_and_period(db_session) -> None:
+    owner = make_user(user_id=416, role="user")
+    period = make_period(name="2026-12", month=12, status="ACTIVO", is_active=True)
+    db_session.add_all([owner, period])
+    db_session.flush()
+
+    bound_contract = models.Funcionario(
+        name="Medrano Díaz Jorge Rafael",
+        title="Enfermero",
+        rut="74500001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    programmed_contract = models.Funcionario(
+        name="Medrano Díaz Jorge Rafael",
+        title="Enfermero",
+        rut="74500001",
+        dv="K",
+        period_id=period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([bound_contract, programmed_contract])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user_id=owner.id, funcionario_id=bound_contract.id),
+        models.Programming(
+            funcionario_id=programmed_contract.id,
+            period_id=period.id,
+            assigned_status="Activo",
+            selected_process="Consulta",
+            created_by_id=owner.id,
+            updated_by_id=owner.id,
+        ),
+    ])
+    db_session.commit()
+
+    payload = programming_router.read_programmings(
+        period_id=period.id,
+        funcionario_ids=[programmed_contract.id],
+        db=db_session,
+        current_user=owner,
+    )
+
+    assert len(payload) == 1
+    assert payload[0].funcionario_id == programmed_contract.id
+
+
 def test_supervisor_can_list_supervised_user_options(db_session) -> None:
     supervisor = make_user(user_id=411, role="supervisor")
     regular_user = make_user(user_id=412, role="user")
-    coordinator = make_user(user_id=413, role="medical_coordinator")
+    medical_coordinator = make_user(user_id=413, role="medical_coordinator")
+    non_medical_coordinator = make_user(user_id=4165, role="non_medical_coordinator")
     admin = make_user(user_id=414, role="admin")
     inactive_user = make_user(user_id=415, role="user")
     inactive_user.status = "inactivo"
 
-    db_session.add_all([supervisor, regular_user, coordinator, admin, inactive_user])
+    db_session.add_all([supervisor, regular_user, medical_coordinator, non_medical_coordinator, admin, inactive_user])
     db_session.commit()
 
     payload = users_router.read_supervised_user_options(db=db_session, current_user=supervisor)
 
-    assert {user.id for user in payload} == {admin.id, regular_user.id, coordinator.id}
+    assert {user.id for user in payload} == {medical_coordinator.id, non_medical_coordinator.id}
+
+
+def test_reviewer_can_list_supervised_user_options(db_session) -> None:
+    reviewer = make_user(user_id=4160, role="revisor")
+    regular_user = make_user(user_id=4161, role="user")
+    medical_coordinator = make_user(user_id=4162, role="medical_coordinator")
+    non_medical_coordinator = make_user(user_id=4166, role="non_medical_coordinator")
+    admin = make_user(user_id=4163, role="admin")
+    supervisor = make_user(user_id=4164, role="supervisor")
+
+    db_session.add_all([reviewer, regular_user, medical_coordinator, non_medical_coordinator, admin, supervisor])
+    db_session.commit()
+
+    payload = users_router.read_supervised_user_options(db=db_session, current_user=reviewer)
+
+    assert {user.id for user in payload} == {medical_coordinator.id, non_medical_coordinator.id}
 
 
 def test_supervisor_cannot_write_funcionarios_or_programming(db_session) -> None:
@@ -764,11 +1798,44 @@ def test_read_general_rows_returns_all_user_assignments_for_admin(db_session) ->
 
     assert andrea["law_code"] == "15076 y 19664"
     assert andrea["hours_per_week"] == "22 hrs y 11 hrs"
+    assert andrea["lunch_time_minutes"] == 0
     assert andrea["user_name"] == "User 501, User 502"
     assert andrea["user_ids"] == [owner_a.id, owner_b.id]
     assert andrea["programmed_label"] == "Programado"
     assert bruno["user_name"] == "User 502"
     assert bruno["programmed_label"] == "No Programado"
+
+
+def test_read_general_rows_includes_consolidated_lunch_minutes(db_session) -> None:
+    admin = make_user(user_id=520, role="admin")
+    owner = make_user(user_id=521, role="user")
+    period = make_period(name="2027-02", month=2, status="ACTIVO", is_active=True)
+    db_session.add_all([admin, owner, period])
+    db_session.flush()
+
+    contract = models.Funcionario(
+        name="Valeria Almuerzo",
+        title="Enfermera",
+        rut="76500003",
+        dv="K",
+        period_id=period.id,
+        law_code="19664",
+        hours_per_week=44,
+        lunch_time_minutes=150,
+        specialty_sis="Urgencia",
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add(contract)
+    db_session.flush()
+    db_session.add(models.UserOfficial(user_id=owner.id, funcionario_id=contract.id))
+    db_session.commit()
+
+    payload = general_router.read_general_rows(period_id=period.id, db=db_session, current_user=admin)
+
+    assert len(payload) == 1
+    assert payload[0]["funcionario"] == "Valeria Almuerzo"
+    assert payload[0]["lunch_time_minutes"] == 150
 
 
 def test_read_general_rows_allows_supervisor_explicit_user_scope(db_session) -> None:
@@ -2150,6 +3217,92 @@ def test_create_programming_partial_commission_requires_performance_unit_when_ru
     )
 
 
+def test_validate_hours_balance_excludes_law_15076_lunch_minutes_without_guard_release(db_session) -> None:
+    period = make_period(name="2027-10-b", month=10, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.flush()
+
+    excluded_contract = models.Funcionario(
+        name="Paula Balance",
+        title="Enfermera",
+        rut="76000070",
+        dv="K",
+        law_code="15076",
+        observations="",
+        period_id=period.id,
+        hours_per_week=11,
+        lunch_time_minutes=60,
+        status="activo",
+        is_active_roster=True,
+    )
+    included_contract = models.Funcionario(
+        name="Paula Balance",
+        title="Enfermera",
+        rut="76000070",
+        dv="K",
+        law_code="19664",
+        observations="",
+        period_id=period.id,
+        hours_per_week=22,
+        lunch_time_minutes=0,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([excluded_contract, included_contract])
+    db_session.commit()
+
+    programming_router.validate_hours_balance(
+        db_session,
+        included_contract.id,
+        [{"assigned_hours": 22}],
+    )
+
+
+def test_validate_hours_balance_keeps_law_15076_lunch_minutes_with_guard_release(db_session) -> None:
+    period = make_period(name="2027-10-c", month=10, status="ACTIVO", is_active=True)
+    db_session.add(period)
+    db_session.flush()
+
+    released_contract = models.Funcionario(
+        name="Paula Balance",
+        title="Enfermera",
+        rut="76000071",
+        dv="K",
+        law_code="15076",
+        observations="liberado de guardia",
+        period_id=period.id,
+        hours_per_week=11,
+        lunch_time_minutes=60,
+        status="activo",
+        is_active_roster=True,
+    )
+    included_contract = models.Funcionario(
+        name="Paula Balance",
+        title="Enfermera",
+        rut="76000071",
+        dv="K",
+        law_code="19664",
+        observations="",
+        period_id=period.id,
+        hours_per_week=22,
+        lunch_time_minutes=0,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([released_contract, included_contract])
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        programming_router.validate_hours_balance(
+            db_session,
+            included_contract.id,
+            [{"assigned_hours": 33}],
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "Las horas programadas exceden las disponibles" in exc_info.value.detail
+
+
 def test_create_programming_partial_commission_allows_missing_performance_unit_when_rule_does_not_apply(db_session) -> None:
     user = make_user(user_id=58, role="user")
     period = make_period(name="2027-11", month=11, status="ACTIVO", is_active=True)
@@ -2339,6 +3492,52 @@ def test_dashboard_stats_count_people_not_raw_contracts_or_inactive_programmings
     assert payload["summary"]["programmed"] == 2
     assert payload["summary"]["unprogrammed"] == 0
     assert payload["summary"]["inactive_total"] == 1
+
+
+def test_dashboard_stats_counts_programmed_when_programming_lives_on_sibling_contract_same_rut(db_session) -> None:
+    user = make_user(user_id=54, role="user")
+    target_period = make_period(name="2027-05-b", month=5, status="ACTIVO", is_active=True)
+    db_session.add_all([user, target_period])
+    db_session.flush()
+
+    bound_contract = models.Funcionario(
+        name="Medrano Díaz Jorge Rafael",
+        title="Enfermero",
+        rut="75000010",
+        dv="K",
+        period_id=target_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    programmed_contract = models.Funcionario(
+        name="Medrano Díaz Jorge Rafael",
+        title="Enfermero",
+        rut="75000010",
+        dv="K",
+        period_id=target_period.id,
+        status="activo",
+        is_active_roster=True,
+    )
+    db_session.add_all([bound_contract, programmed_contract])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user_id=user.id, funcionario_id=bound_contract.id),
+        models.Programming(funcionario_id=programmed_contract.id, period_id=target_period.id),
+    ])
+    db_session.commit()
+
+    payload = stats_router.get_dashboard_stats(
+        period_id=target_period.id,
+        user_id=user.id,
+        history_limit=stats_router.DEFAULT_DASHBOARD_HISTORY_LIMIT,
+        db=db_session,
+        current_user=user,
+    )
+
+    assert payload["summary"]["active_officials"] == 1
+    assert payload["summary"]["programmed"] == 1
+    assert payload["summary"]["unprogrammed"] == 0
 
 
 def test_dashboard_stats_chart_excludes_current_period_hours_from_historical_bindings(db_session) -> None:
@@ -2718,6 +3917,50 @@ def test_read_funcionarios_exposes_partial_commission_visual_marker_without_inac
     assert result[0]["status"] == "activo"
     assert result[0]["inactive_reason"] is None
     assert result[0]["active_status_label"] == "Comisión de Servicio - Parcial"
+
+
+def test_read_funcionarios_exposes_termination_date_for_effective_and_future_dismisses(db_session) -> None:
+    user = make_user(user_id=3, role="user")
+    period = make_period(name="2026-05", month=5, status="ACTIVO", is_active=True)
+    group = models.Group(name="Grupo C", user=user, period=period)
+    inactive = models.Funcionario(
+        name="Irene Inactiva",
+        title="Enfermera",
+        rut="99",
+        dv="K",
+        period=period,
+        status="inactivo",
+        dismiss_start_date=datetime(2026, 5, 10),
+    )
+    active_with_future_dismiss = models.Funcionario(
+        name="Fabio Futuro",
+        title="Médico",
+        rut="100",
+        dv="1",
+        period=period,
+        status="activo",
+        dismiss_start_date=datetime(2026, 6, 1),
+    )
+
+    db_session.add_all([user, period, group, inactive, active_with_future_dismiss])
+    db_session.flush()
+
+    db_session.add_all([
+        models.UserOfficial(user=user, funcionario=inactive, group=group),
+        models.UserOfficial(user=user, funcionario=active_with_future_dismiss, group=group),
+    ])
+    db_session.commit()
+
+    result = funcionarios_router.read_funcionarios(
+        period_id=period.id,
+        db=db_session,
+        current_user=user,
+    )
+
+    assert len(result) == 2
+    by_name = {item["name"]: item for item in result}
+    assert by_name["Irene Inactiva"]["termination_date"] == datetime(2026, 5, 10)
+    assert by_name["Fabio Futuro"]["termination_date"] == datetime(2026, 6, 1)
 
 
 def test_require_active_user_rejects_inactive_accounts() -> None:

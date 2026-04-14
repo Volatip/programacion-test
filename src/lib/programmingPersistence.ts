@@ -57,7 +57,9 @@ export function buildProgrammingPayload({
   activityEntries,
   activitiesList,
 }: BuildProgrammingPayloadParams) {
-  const validEntries = activityEntries.filter((entry) => entry.assignedHours && parseFloat(entry.assignedHours) > 0);
+  const validEntries = activityEntries.filter(
+    (entry) => entry.assignedHours && parseFloat(entry.assignedHours.replace(",", ".")) > 0,
+  );
 
   const programmingPayload: Record<string, unknown> = {
       funcionario_id: funcionarioId,

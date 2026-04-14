@@ -21,6 +21,7 @@ interface RawFuncionario {
   lunch_time_minutes?: number;
   status?: string;
   inactive_reason?: string | null;
+  termination_date?: string | null;
   active_status_label?: string | null;
   has_future_dismiss_scheduled?: boolean;
   future_dismiss_start_date?: string | null;
@@ -78,6 +79,8 @@ export function OfficialsProvider({ children }: { children: ReactNode }) {
     lunchTime: `${item.lunch_time_minutes || 0} min`,
     status: item.status || "activo", // Added status
     inactiveReason: item.inactive_reason || undefined,
+    terminationDate: item.termination_date ? new Date(item.termination_date).toLocaleDateString() : undefined,
+    terminationDateRaw: item.termination_date || undefined,
     activeStatusLabel: item.active_status_label || undefined,
     hasFutureDismissScheduled: item.has_future_dismiss_scheduled || false,
     futureDismissStartDate: item.future_dismiss_start_date || undefined,

@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { buildApiUrl, fetchWithAuth } from "../lib/api";
+import {
+  buildHeaderInfoBarPlainText,
+  cloneHeaderInfoBarConfig,
+  createDefaultHeaderInfoBarConfig,
+  getHeaderInfoBarValidationError,
+  HEADER_INFO_CONFIG_KEY,
+  HEADER_INFO_DESCRIPTION,
+  type HeaderInfoBarConfig,
+  parseHeaderInfoBarConfig,
+  serializeHeaderInfoBarConfig,
+} from "../lib/headerInfoBar";
 
 const HEADER_INFO_STORAGE_KEY = "headerInfoText";
 const HEADER_VISIBILITY_STORAGE_KEY = "headerInfoVisible";
-const DEFAULT_INFO_TEXT = "¡Bienvenido al sistema de gestión!";
 
 interface HeaderInfoBarMessage {
   type?: string;
   payload?: {
     text?: string;
+    config?: HeaderInfoBarConfig;
   };
 }
 
@@ -19,10 +30,10 @@ interface UseHeaderInfoBarParams {
 }
 
 export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHeaderInfoBarParams) {
-  const [infoText, setInfoText] = useState(DEFAULT_INFO_TEXT);
+  const [infoConfig, setInfoConfig] = useState<HeaderInfoBarConfig>(createDefaultHeaderInfoBarConfig());
   const [isInfoVisible, setIsInfoVisible] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [tempInfoText, setTempInfoText] = useState("");
+  const [tempInfoConfig, setTempInfoConfig] = useState<HeaderInfoBarConfig>(createDefaultHeaderInfoBarConfig());
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -32,8 +43,13 @@ export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHea
 
     try {
       const data: HeaderInfoBarMessage = JSON.parse(lastMessage);
-      if (data.type === "INFO_BAR_UPDATE" && typeof data.payload?.text === "string") {
-        setInfoText(data.payload.text);
+      if (data.type === "INFO_BAR_UPDATE") {
+        const nextConfig = data.payload?.config
+          ? cloneHeaderInfoBarConfig(data.payload.config)
+          : parseHeaderInfoBarConfig(data.payload?.text);
+
+        setInfoConfig(nextConfig);
+        localStorage.setItem(HEADER_INFO_STORAGE_KEY, serializeHeaderInfoBarConfig(nextConfig));
       }
     } catch (parseError) {
       console.error("Error parsing WS message", parseError);
@@ -46,22 +62,23 @@ export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHea
         const response = await fetchWithAuth(buildApiUrl("/config/configs/header_info_text"));
         if (response.ok) {
           const data = await response.json();
-          setInfoText(data.value);
-          localStorage.setItem(HEADER_INFO_STORAGE_KEY, data.value);
+          const nextConfig = parseHeaderInfoBarConfig(data.value);
+          setInfoConfig(nextConfig);
+          localStorage.setItem(HEADER_INFO_STORAGE_KEY, serializeHeaderInfoBarConfig(nextConfig));
           return;
         }
 
         if (response.status === 404) {
           const savedText = localStorage.getItem(HEADER_INFO_STORAGE_KEY);
           if (savedText) {
-            setInfoText(savedText);
+            setInfoConfig(parseHeaderInfoBarConfig(savedText));
           }
         }
       } catch (fetchError) {
         console.error("Failed to fetch info text config", fetchError);
         const savedText = localStorage.getItem(HEADER_INFO_STORAGE_KEY);
         if (savedText) {
-          setInfoText(savedText);
+          setInfoConfig(parseHeaderInfoBarConfig(savedText));
         }
       }
     };
@@ -75,10 +92,10 @@ export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHea
   }, []);
 
   const openEditModal = useCallback(() => {
-    setTempInfoText(infoText);
+    setTempInfoConfig(cloneHeaderInfoBarConfig(infoConfig));
     setError("");
     setIsEditModalOpen(true);
-  }, [infoText]);
+  }, [infoConfig]);
 
   const closeEditModal = useCallback(() => {
     setIsEditModalOpen(false);
@@ -94,10 +111,14 @@ export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHea
   }, []);
 
   const handleSaveInfo = useCallback(async () => {
-    if (tempInfoText.length > 200) {
-      setError("El texto no puede exceder los 200 caracteres");
+    const validationError = getHeaderInfoBarValidationError(tempInfoConfig);
+    if (validationError) {
+      setError(validationError);
       return;
     }
+
+    const nextConfig = cloneHeaderInfoBarConfig(tempInfoConfig);
+    const serializedValue = serializeHeaderInfoBarConfig(nextConfig);
 
     try {
       await fetchWithAuth(buildApiUrl("/config/configs"), {
@@ -106,17 +127,17 @@ export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHea
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          key: "header_info_text",
-          value: tempInfoText,
-          description: "Texto de la barra informativa del header"
+          key: HEADER_INFO_CONFIG_KEY,
+          value: serializedValue,
+          description: HEADER_INFO_DESCRIPTION,
         }),
       });
     } catch (saveError) {
       console.error("Failed to save config to DB", saveError);
     }
 
-    setInfoText(tempInfoText);
-    localStorage.setItem(HEADER_INFO_STORAGE_KEY, tempInfoText);
+    setInfoConfig(nextConfig);
+    localStorage.setItem(HEADER_INFO_STORAGE_KEY, serializedValue);
     setIsEditModalOpen(false);
     setError("");
 
@@ -131,23 +152,24 @@ export function useHeaderInfoBar({ lastMessage, onBroadcast, updatedBy }: UseHea
     onBroadcast(JSON.stringify({
       type: "INFO_BAR_UPDATE",
       payload: {
-        text: tempInfoText,
+        text: buildHeaderInfoBarPlainText(nextConfig),
+        config: nextConfig,
         updatedBy,
-      }
+      },
     }));
-  }, [onBroadcast, tempInfoText, updatedBy]);
+  }, [onBroadcast, tempInfoConfig, updatedBy]);
 
   return {
     closeEditModal,
     error,
     handleSaveInfo,
-    infoText,
+    infoConfig,
     isEditModalOpen,
     isInfoVisible,
     openEditModal,
     setError,
-    setTempInfoText,
-    tempInfoText,
+    setTempInfoConfig,
+    tempInfoConfig,
     toggleInfoVisibility,
   };
 }

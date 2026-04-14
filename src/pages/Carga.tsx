@@ -13,7 +13,7 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 
 type UploadType = "specialties" | "processes" | "activities" | "performance_units" | "other";
 
-interface UploadConfig {
+export interface UploadConfig {
   id: UploadType;
   title: string;
   description: string;
@@ -22,45 +22,45 @@ interface UploadConfig {
   icon: React.ElementType;
 }
 
-const UPLOAD_OPTIONS: UploadConfig[] = [
+export const UPLOAD_OPTIONS: UploadConfig[] = [
   {
     id: "specialties",
     title: "Especialidades",
     description: "Carga masiva de especialidades y sus estadísticas (rendimiento, consulta nueva, etc.)",
-    endpoint: "/api/config/specialties/upload",
-    templateEndpoint: "/api/config/specialties/template",
+    endpoint: "/config/specialties/upload",
+    templateEndpoint: "/config/specialties/template",
     icon: Database
   },
   {
     id: "performance_units",
     title: "Unidades de Desempeño",
     description: "Catálogo de unidades de desempeño para Ley 15076",
-    endpoint: "/api/config/performance-units/upload",
-    templateEndpoint: "/api/config/performance-units/template",
+    endpoint: "/config/performance-units/upload",
+    templateEndpoint: "/config/performance-units/template",
     icon: Building2
   },
   {
     id: "processes",
     title: "Procesos",
     description: "Catálogo de procesos disponibles para la programación",
-    endpoint: "/api/config/processes/upload",
-    templateEndpoint: "/api/config/processes/template",
+    endpoint: "/config/processes/upload",
+    templateEndpoint: "/config/processes/template",
     icon: GitMerge
   },
   {
     id: "activities",
     title: "Tipos de Actividad",
     description: "Definición de tipos de actividades para funcionarios",
-    endpoint: "/api/config/activities/upload",
-    templateEndpoint: "/api/config/activities/template",
+    endpoint: "/config/activities/upload",
+    templateEndpoint: "/config/activities/template",
     icon: Activity
   },
   {
     id: "other",
     title: "Otros",
     description: "Otras configuraciones del sistema",
-    endpoint: "/api/config/other/upload",
-    templateEndpoint: "/api/config/other/template",
+    endpoint: "/config/other/upload",
+    templateEndpoint: "/config/other/template",
     icon: Settings
   }
 ];

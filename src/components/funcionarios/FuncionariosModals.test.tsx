@@ -241,6 +241,45 @@ describe("FuncionariosModals", () => {
     expect(screen.queryByLabelText(/fecha de inicio de la baja/i)).toBeNull();
   });
 
+  it("shows a visible calendar button and uses showPicker when available", () => {
+    const reason = makeReason({
+      id: 1,
+      name: "Renuncia",
+      reason_category: "resignation",
+      requires_start_date: true,
+    });
+
+    renderModals(reason);
+
+    const dateInput = screen.getByLabelText(/fecha de inicio de la baja/i) as HTMLInputElement;
+    const showPicker = vi.fn();
+    dateInput.showPicker = showPicker;
+
+    fireEvent.click(screen.getByRole("button", { name: /abrir calendario de fecha de inicio/i }));
+
+    expect(dateInput).toHaveAttribute("type", "date");
+    expect(showPicker).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the start date input when showPicker is not available", () => {
+    const reason = makeReason({
+      id: 1,
+      name: "Renuncia",
+      reason_category: "resignation",
+      requires_start_date: true,
+    });
+
+    renderModals(reason);
+
+    const dateInput = screen.getByLabelText(/fecha de inicio de la baja/i) as HTMLInputElement;
+    const focusSpy = vi.spyOn(dateInput, "focus");
+    delete dateInput.showPicker;
+
+    fireEvent.click(screen.getByRole("button", { name: /abrir calendario de fecha de inicio/i }));
+
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('does not require start date for "Agregado por Error"', () => {
     const reason = makeReason({
       id: 6,

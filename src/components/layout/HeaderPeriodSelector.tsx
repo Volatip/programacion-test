@@ -35,11 +35,11 @@ export function HeaderPeriodSelector({
     <div className="relative">
       <button
         onClick={() => setShowPeriodMenu(!showPeriodMenu)}
-        className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+        className="flex min-w-0 items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 sm:min-w-[13rem] lg:min-w-[16rem] xl:px-3 xl:text-sm"
       >
-        <Calendar size={16} className="text-gray-500 dark:text-gray-400" />
-        {selectedPeriod ? selectedPeriod.name : "Cargando..."}
-        <ChevronDown size={14} className="text-gray-400" />
+        <Calendar size={16} className="shrink-0 text-gray-500 dark:text-gray-400" />
+        <span className="min-w-0 flex-1 truncate text-left">{selectedPeriod ? selectedPeriod.name : "Cargando..."}</span>
+        <ChevronDown size={14} className="shrink-0 text-gray-400" />
       </button>
 
       {showPeriodMenu && (

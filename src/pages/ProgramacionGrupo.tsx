@@ -1,8 +1,8 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import { useOfficials, Funcionario } from "../context/OfficialsContext";
 import { usePeriods } from "../context/PeriodsContext";
-import { useState } from "react";
 import { ProgrammingGroupHeader } from "../components/programacion/ProgrammingGroupHeader";
 import { ProgrammingGroupOfficialsList } from "../components/programacion/ProgrammingGroupOfficialsList";
 import { ProgrammingModal } from "../components/programacion/ProgrammingModal";
@@ -11,7 +11,7 @@ import { ContextualHelpButton } from "../components/contextual-help/ContextualHe
 import { APP_ROUTES } from "../lib/appPaths";
 import { getOfficialsForProgrammingGroup, isAutomaticProgrammingGroup } from "../lib/programmingGroups";
 import { useAuth } from "../context/AuthContext";
-import { isSupervisorRole } from "../lib/userRoles";
+import { isReadOnlyRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
 
@@ -19,10 +19,11 @@ export function ProgramacionGrupo() {
   const { user } = useAuth();
   const { isSupervisor, isScopeReady } = useSupervisorScope();
   const { groupId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { officials: myOfficials, groups, assignToGroup } = useOfficials();
   const { isReadOnly } = usePeriods();
-  const canManageProgramming = !isSupervisorRole(user?.role);
+  const canManageProgramming = !isReadOnlyRole(user?.role);
   const isReadOnlyView = isReadOnly || !canManageProgramming;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOfficial, setSelectedOfficial] = useState<Funcionario | null>(null);
@@ -34,6 +35,19 @@ export function ProgramacionGrupo() {
 
   const groupOfficials = getOfficialsForProgrammingGroup(myOfficials, Number(groupId));
 
+  useEffect(() => {
+    const selectedOfficialId = (location.state as { selectedOfficialId?: number } | null)?.selectedOfficialId;
+    if (!selectedOfficialId) {
+      return;
+    }
+
+    const officialToOpen = groupOfficials.find((official) => official.id === selectedOfficialId);
+    if (officialToOpen) {
+      setSelectedOfficial(officialToOpen);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [groupOfficials, location.pathname, location.state, navigate]);
+
   const filteredOfficials = searchQuery
     ? groupOfficials.filter(
         (f) =>
@@ -41,6 +55,13 @@ export function ProgramacionGrupo() {
           f.rut.includes(searchQuery)
       )
     : groupOfficials;
+
+  const selectedOfficialIndex = selectedOfficial
+    ? filteredOfficials.findIndex((f) => f.id === selectedOfficial.id)
+    : -1;
+
+  const hasPreviousOfficial = selectedOfficialIndex > 0;
+  const hasNextOfficial = selectedOfficialIndex !== -1 && selectedOfficialIndex < filteredOfficials.length - 1;
 
   if (isLoadingGroupData) {
     return <div className="p-8 text-center">Cargando grupo...</div>;
@@ -59,13 +80,17 @@ export function ProgramacionGrupo() {
   }
 
   const handleNextOfficial = () => {
-    if (!selectedOfficial) return;
-    const currentIndex = filteredOfficials.findIndex((f) => f.id === selectedOfficial.id);
-    if (currentIndex !== -1 && currentIndex < filteredOfficials.length - 1) {
-      setSelectedOfficial(filteredOfficials[currentIndex + 1]);
-    } else {
+    if (!hasNextOfficial) {
       setSelectedOfficial(null);
+      return;
     }
+
+    setSelectedOfficial(filteredOfficials[selectedOfficialIndex + 1]);
+  };
+
+  const handlePreviousOfficial = () => {
+    if (!hasPreviousOfficial) return;
+    setSelectedOfficial(filteredOfficials[selectedOfficialIndex - 1]);
   };
 
   const handleRemoveFromGroup = async (e: React.MouseEvent, official: Funcionario) => {
@@ -143,7 +168,8 @@ export function ProgramacionGrupo() {
         <ProgrammingModal
           funcionario={selectedOfficial}
           onClose={() => setSelectedOfficial(null)}
-          onNext={handleNextOfficial}
+          onPrevious={hasPreviousOfficial ? handlePreviousOfficial : undefined}
+          onNext={hasNextOfficial ? handleNextOfficial : undefined}
         />
       )}
 

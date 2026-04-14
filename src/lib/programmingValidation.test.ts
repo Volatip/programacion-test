@@ -58,4 +58,46 @@ describe('validateProgrammingForm', () => {
     expect(result.missingFields).toContain('Las filas con datos deben estar completas (Actividad, Especialidad, Horas, Rendimiento)');
     expect(result.missingFields).toContain('No se puede guardar la programación con horas disponibles negativas');
   });
+
+  it('permite rendimiento decimal con coma', () => {
+    const result = validateProgrammingForm({
+      pendingStatus: '',
+      isAvailableNegative: false,
+      showSpecialty: false,
+      globalSpecialty: '',
+      hideActivitiesTable: false,
+      showPerformanceUnit: false,
+      selectedPerformanceUnit: '',
+      prais: 'Si',
+      activityEntries: [
+        { id: 1, activity: 'Consulta', specialty: '', assignedHours: '2', performance: '0,35' },
+      ],
+      selectedProcess: '',
+      showCopyAndProcess: false,
+      shouldShowPerformanceFields: () => true,
+    });
+
+    expect(result.errors.activity_1_performance).toBeUndefined();
+  });
+
+  it('permite rendimiento decimal con punto al validar', () => {
+    const result = validateProgrammingForm({
+      pendingStatus: '',
+      isAvailableNegative: false,
+      showSpecialty: false,
+      globalSpecialty: '',
+      hideActivitiesTable: false,
+      showPerformanceUnit: false,
+      selectedPerformanceUnit: '',
+      prais: 'Si',
+      activityEntries: [
+        { id: 1, activity: 'Consulta', specialty: '', assignedHours: '2', performance: '0.35' },
+      ],
+      selectedProcess: '',
+      showCopyAndProcess: false,
+      shouldShowPerformanceFields: () => true,
+    });
+
+    expect(result.errors.activity_1_performance).toBeUndefined();
+  });
 });

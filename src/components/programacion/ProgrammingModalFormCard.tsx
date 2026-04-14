@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import type { Funcionario } from "../../context/OfficialsContext";
 import type { Group } from "../../context/OfficialsContextDefs";
 import type { ActivityConfig, ProgrammingConfigData } from "../../hooks/useProgrammingConfig";
+import type { ProgrammingReviewEvent } from "../../lib/api";
 import type { ProgrammingActivityEntry } from "../../lib/programmingForm";
 import { ProgrammingActivitiesEmptyState } from "./ProgrammingActivitiesEmptyState";
 import { ProgrammingActivitiesTable } from "./ProgrammingActivitiesTable";
@@ -59,12 +60,21 @@ interface ProgrammingModalFormCardProps {
   onClose: () => void;
   onDelete: () => void;
   onSaveAndNext: (event: MouseEvent<HTMLButtonElement>) => void;
+  onPrevious?: () => void;
   onNext?: () => void;
   programmingId: number | null;
   isSubmitting: boolean;
   isAvailableNegative: boolean;
   isSaved: boolean;
+  hasPrevious: boolean;
   hasNext: boolean;
+  reviewMode?: boolean;
+  reviewComment?: string;
+  onReviewCommentChange?: (value: string) => void;
+  onSubmitReview?: (action: "validated" | "fix_required", comment?: string) => void;
+  canSubmitReview?: boolean;
+  latestReviewLabel?: string | null;
+  correctionHistory?: ProgrammingReviewEvent[];
 }
 
 export function ProgrammingModalFormCard({
@@ -114,12 +124,21 @@ export function ProgrammingModalFormCard({
   onClose,
   onDelete,
   onSaveAndNext,
+  onPrevious,
   onNext,
   programmingId,
   isSubmitting,
   isAvailableNegative,
   isSaved,
+  hasPrevious,
   hasNext,
+  reviewMode = false,
+  reviewComment = "",
+  onReviewCommentChange,
+  onSubmitReview,
+  canSubmitReview = true,
+  latestReviewLabel,
+  correctionHistory = [],
 }: ProgrammingModalFormCardProps) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-6 shadow-sm relative min-h-[400px]">
@@ -214,13 +233,22 @@ export function ProgrammingModalFormCard({
           onClose={onClose}
           onDelete={onDelete}
           onSaveAndNext={onSaveAndNext}
+          onPrevious={onPrevious}
           onNext={onNext}
           isReadOnly={isReadOnly}
           programmingId={programmingId}
           isSubmitting={isSubmitting}
           isAvailableNegative={isAvailableNegative}
           isSaved={isSaved}
+          hasPrevious={hasPrevious}
           hasNext={hasNext}
+          reviewMode={reviewMode}
+          reviewComment={reviewComment}
+          onReviewCommentChange={onReviewCommentChange}
+          onSubmitReview={onSubmitReview}
+          canSubmitReview={canSubmitReview}
+          latestReviewLabel={latestReviewLabel}
+          correctionHistory={correctionHistory}
         />
       </form>
     </div>

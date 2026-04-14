@@ -28,6 +28,8 @@ const EXEMPT_STATUSES = [
   "Comisión de Estudio",
 ];
 
+const normalizeDecimalValue = (value: string) => value.replace(",", ".");
+
 export function validateProgrammingForm({
   pendingStatus,
   isAvailableNegative,
@@ -66,7 +68,7 @@ export function validateProgrammingForm({
   }
 
   const entriesToValidate = activityEntries.filter(
-    (entry) => entry.activity !== "" || (entry.assignedHours && parseFloat(entry.assignedHours) > 0),
+    (entry) => entry.activity !== "" || (entry.assignedHours && parseFloat(normalizeDecimalValue(entry.assignedHours)) > 0),
   );
 
   if (!hideActivitiesTable && !isExempt) {
@@ -85,14 +87,14 @@ export function validateProgrammingForm({
         entryError = true;
       }
 
-      const hours = parseFloat(entry.assignedHours);
+      const hours = parseFloat(normalizeDecimalValue(entry.assignedHours));
       if (isNaN(hours) || hours <= 0) {
         errors[`activity_${entry.id}_assignedHours`] = true;
         entryError = true;
       }
 
       if (shouldShowPerformanceFields(entry.activity)) {
-        const performance = parseFloat(entry.performance);
+        const performance = parseFloat(normalizeDecimalValue(entry.performance));
         if (isNaN(performance) || entry.performance.trim() === "" || performance < 0) {
           errors[`activity_${entry.id}_performance`] = true;
           entryError = true;

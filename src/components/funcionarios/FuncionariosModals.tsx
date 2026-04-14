@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowRightLeft, Briefcase, CalendarOff, CheckCircle2, GraduationCap, Search, Trash2, UserMinus, UserPlus, X } from "lucide-react";
-import type React from "react";
+import { AlertTriangle, ArrowRightLeft, Briefcase, Calendar, CalendarOff, CheckCircle2, GraduationCap, Search, Trash2, UserMinus, UserPlus, X } from "lucide-react";
+import { useRef } from "react";
 import type { Funcionario } from "../../context/OfficialsContextDefs";
 import { isPartialCommissionSelection, type DismissReason } from "../../lib/dismissReasons";
 import { Modal } from "../ui/Modal";
@@ -80,9 +80,21 @@ export function FuncionariosModals({
   toastType,
   setToastOpen,
 }: FuncionariosModalsProps) {
+  const dismissStartDateInputRef = useRef<HTMLInputElement>(null);
   const selectedDismissSuboption = selectedDismissReason?.suboptions.find((suboption) => suboption.id === dismissSuboptionId) ?? null;
   const requiresPartialHours = isPartialCommissionSelection(selectedDismissReason, dismissSuboptionId);
   const requiresDismissStartDate = Boolean(selectedDismissReason?.requires_start_date);
+
+  const handleOpenDismissStartDatePicker = () => {
+    const input = dismissStartDateInputRef.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.showPicker?.();
+    input.focus();
+  };
 
   const getReasonIcon = (reason: DismissReason) => {
     if (reason.action_type === "hide") return Trash2;
@@ -161,9 +173,9 @@ export function FuncionariosModals({
 
           <div className="space-y-3">
             <label className="block text-sm font-semibold text-gray-900 dark:text-white">Motivo de la baja</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {isLoadingDismissReasons ? (
-                <div className="col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Cargando motivos disponibles...</div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500 lg:col-span-2">Cargando motivos disponibles...</div>
               ) : dismissReasons.map((item) => {
                 const Icon = getReasonIcon(item);
                 return (
@@ -219,7 +231,7 @@ export function FuncionariosModals({
           {selectedDismissReason && selectedDismissReason.suboptions.length > 0 && (
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-gray-900 dark:text-white">Subopción obligatoria</label>
-              <div className="grid grid-cols-2 gap-3">
+               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 {selectedDismissReason.suboptions.map((suboption) => (
                   <button
                     key={suboption.id}
@@ -268,16 +280,27 @@ export function FuncionariosModals({
               <label htmlFor="dismiss-start-date" className="block text-sm font-semibold text-gray-900 dark:text-white">
                 Fecha de inicio de la baja <span className="text-red-500">*</span>
               </label>
-              <input
-                id="dismiss-start-date"
-                type="date"
-                value={dismissStartDate}
-                onChange={(e) => {
-                  setDismissStartDate(e.target.value);
-                  setDismissError("");
-                }}
-                className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/30 px-4 py-3 text-sm text-gray-900 dark:text-white outline-none transition focus:ring-2 focus:ring-primary/20"
-              />
+              <div className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 dark:border-gray-700 dark:bg-gray-900/30">
+                <input
+                  ref={dismissStartDateInputRef}
+                  id="dismiss-start-date"
+                  type="date"
+                  value={dismissStartDate}
+                  onChange={(e) => {
+                    setDismissStartDate(e.target.value);
+                    setDismissError("");
+                  }}
+                  className="date-input-hide-picker w-full bg-transparent px-4 py-3 pr-14 text-sm text-gray-900 outline-none transition dark:text-white"
+                 />
+                <button
+                  type="button"
+                  aria-label="Abrir calendario de fecha de inicio"
+                  onClick={handleOpenDismissStartDatePicker}
+                  className="absolute inset-y-1.5 right-1.5 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-gray-500 transition hover:border-primary/30 hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 dark:border-gray-600 dark:bg-gray-800/80 dark:text-gray-300 dark:hover:border-primary/40 dark:hover:bg-primary/10 dark:hover:text-primary"
+                >
+                  <Calendar className="h-4 w-4" />
+                </button>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">Se usa para determinar si el funcionario queda activo o inactivo en el período vigente.</p>
             </div>
           )}
@@ -349,13 +372,13 @@ export function FuncionariosModals({
         showCloseButton={false}
       >
         <div className="flex flex-col h-full">
-          <div className="px-4 pb-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800 flex-shrink-0 transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 text-primary rounded-lg">
-                <UserPlus className="w-5 h-5" />
+          <div className="px-5 pb-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800 flex-shrink-0 transition-colors">
+            <div className="flex items-center gap-5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
+                <UserPlus className="w-6 h-6" />
               </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Buscar en base de datos de RRHH</p>
+              <div className="pr-2">
+                <p className="text-sm font-medium leading-6 text-gray-500 dark:text-gray-400">Buscar en base de datos de RRHH</p>
               </div>
             </div>
             <button

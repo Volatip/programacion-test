@@ -111,6 +111,10 @@ def test_duplicate_period_base_copies_allowed_data_and_skips_audits_hidden_and_l
         selected_process="Proceso 1",
         selected_performance_unit="Unidad 1",
         time_unit="minutes",
+        review_status="validated",
+        reviewed_at=datetime(2026, 3, 10, 9, 30),
+        reviewed_by_id=user.id,
+        review_comment="Snapshot histórico que no debe copiarse",
         created_by_id=user.id,
         updated_by_id=user.id,
     )
@@ -196,6 +200,10 @@ def test_duplicate_period_base_copies_allowed_data_and_skips_audits_hidden_and_l
     assert duplicated_binding.group_id == duplicated_group.id
     assert duplicated_programming.funcionario_id == duplicated_funcionario.id
     assert duplicated_programming.assigned_group_id == duplicated_group.id
+    assert duplicated_programming.review_status is None
+    assert duplicated_programming.reviewed_at is None
+    assert duplicated_programming.reviewed_by_id is None
+    assert duplicated_programming.review_comment is None
     assert duplicated_item.programming_id == duplicated_programming.id
     assert duplicated_item.activity_type_id != source_activity_type.id
     assert duplicated_stats.new_consult_percentage == 35

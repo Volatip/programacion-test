@@ -29,6 +29,9 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    review_events = relationship("ProgrammingReviewEvent", foreign_keys="ProgrammingReviewEvent.reviewed_by_id", back_populates="reviewed_by")
+    notifications = relationship("UserNotification", back_populates="user", cascade="all, delete-orphan")
+
 class Funcionario(Base):
     __tablename__ = "funcionarios"
 
@@ -217,6 +220,10 @@ class Programming(Base):
     dismiss_suboption_id = Column(Integer, nullable=True, index=True)
     dismiss_partial_hours = Column(Integer, nullable=True)
     dismiss_start_date = Column(DateTime, nullable=True)
+    review_status = Column(String, nullable=True, index=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    review_comment = Column(Text, nullable=True)
 
     # Audit
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -231,7 +238,9 @@ class Programming(Base):
     group = relationship("Group")
     created_by = relationship("User", foreign_keys=[created_by_id])
     updated_by = relationship("User", foreign_keys=[updated_by_id])
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
     items = relationship("ProgrammingItem", back_populates="programming", cascade="all, delete-orphan")
+    review_events = relationship("ProgrammingReviewEvent", back_populates="programming", cascade="all, delete-orphan", order_by="ProgrammingReviewEvent.reviewed_at.desc()")
 
     @property
     def created_by_name(self):
@@ -240,6 +249,46 @@ class Programming(Base):
     @property
     def updated_by_name(self):
         return self.updated_by.name if self.updated_by else None
+
+    @property
+    def reviewed_by_name(self):
+        return self.reviewed_by.name if self.reviewed_by else None
+
+
+class ProgrammingReviewEvent(Base):
+    __tablename__ = "programming_review_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    programming_id = Column(Integer, ForeignKey("programmings.id"), nullable=False, index=True)
+    action = Column(String, nullable=False, index=True)
+    comment = Column(Text, nullable=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reviewed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    email_status = Column(String, nullable=True)
+    email_error = Column(Text, nullable=True)
+
+    programming = relationship("Programming", back_populates="review_events")
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id], back_populates="review_events")
+
+    @property
+    def reviewed_by_name(self):
+        return self.reviewed_by.name if self.reviewed_by else None
+
+
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    link = Column(String, nullable=True)
+    payload_json = Column(Text, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    user = relationship("User", back_populates="notifications")
 
 class ProgrammingItem(Base):
     __tablename__ = "programming_items"

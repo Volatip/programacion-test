@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from . import models
+from .contract_rules import is_law_15076_without_guard_release
 from .dismiss_reasons import (
     REASON_SYSTEM_KEY_COMMISSION_SERVICE,
     SUBOPTION_SYSTEM_KEY_PARTIAL,
@@ -27,9 +28,7 @@ def _normalize_text(value: str | None) -> str:
 def requires_performance_unit(funcionario: models.Funcionario | None) -> bool:
     law_code = funcionario.law_code if funcionario else None
     observations = funcionario.observations if funcionario else None
-    is_law_15076 = "15076" in (law_code or "")
-    is_liberado_guardia = "liberado de guardia" in _normalize_text(observations)
-    return is_law_15076 and not is_liberado_guardia
+    return is_law_15076_without_guard_release(law_code, observations)
 
 
 def _format_missing_base_fields_message(missing_fields: list[str]) -> str:

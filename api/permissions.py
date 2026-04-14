@@ -16,6 +16,10 @@ class PermissionChecker:
         return getattr(user, "role", None) == "supervisor"
 
     @staticmethod
+    def is_reviewer(user: models.User) -> bool:
+        return getattr(user, "role", None) == "revisor"
+
+    @staticmethod
     def is_medical_coordinator(user: models.User) -> bool:
         return getattr(user, "role", None) == "medical_coordinator"
 
@@ -26,6 +30,10 @@ class PermissionChecker:
     @staticmethod
     def is_coordinator(user: models.User) -> bool:
         return PermissionChecker.is_medical_coordinator(user) or PermissionChecker.is_non_medical_coordinator(user)
+
+    @staticmethod
+    def is_read_only_role(user: models.User) -> bool:
+        return PermissionChecker.is_supervisor(user) or PermissionChecker.is_reviewer(user)
 
     @staticmethod
     def is_funcionario_allowed_by_role(user: models.User, funcionario: models.Funcionario) -> bool:
@@ -53,10 +61,14 @@ class PermissionChecker:
 
     @staticmethod
     def require_read_only_access(user: models.User, detail: str = "El rol supervisor solo puede acceder en modo lectura."):
-        if PermissionChecker.is_supervisor(user):
+        if PermissionChecker.is_read_only_role(user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=detail,
+                detail=(
+                    "El rol revisor solo puede acceder en modo lectura operacional."
+                    if PermissionChecker.is_reviewer(user)
+                    else detail
+                ),
             )
         return True
 
@@ -69,7 +81,7 @@ class PermissionChecker:
         if PermissionChecker.is_admin(user):
             return requested_user_id if requested_user_id is not None else user.id
 
-        if PermissionChecker.is_supervisor(user):
+        if PermissionChecker.is_supervisor(user) or PermissionChecker.is_reviewer(user):
             return requested_user_id
 
         if requested_user_id is not None and requested_user_id != user.id:
@@ -92,7 +104,7 @@ class PermissionChecker:
                 detail="Funcionario not found"
             )
 
-        if PermissionChecker.is_admin(user) or PermissionChecker.is_supervisor(user):
+        if PermissionChecker.is_admin(user) or PermissionChecker.is_supervisor(user) or PermissionChecker.is_reviewer(user):
             return True
 
         assignment = db.query(models.UserOfficial).filter(
@@ -264,6 +276,15 @@ class PermissionChecker:
     @staticmethod
     def check_can_manage_users(user: models.User):
         return PermissionChecker.require_admin(user)
+
+    @staticmethod
+    def check_can_review_programming(user: models.User):
+        if PermissionChecker.is_admin(user) or PermissionChecker.is_reviewer(user):
+            return True
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo admin o revisor pueden ejecutar acciones de revisión.",
+        )
 
     @staticmethod
     def check_can_manage_contextual_help(user: models.User):

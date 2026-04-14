@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOfficials, Group } from "../context/OfficialsContext";
 import { usePeriods } from "../context/PeriodsContext";
 import { useProgrammingClassification } from "../hooks/useProgrammingClassification";
@@ -9,16 +9,17 @@ import { ProgrammingStatusSummary } from "../components/programacion/Programming
 import { PageHeader } from "../components/ui/PageHeader";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { useAuth } from "../context/AuthContext";
-import { isSupervisorRole } from "../lib/userRoles";
+import { isReadOnlyRole } from "../lib/userRoles";
 import { useSupervisorScope } from "../context/SupervisorScopeContext";
 import { SupervisorScopePanel } from "../components/supervisor/SupervisorScopePanel";
+import { matchesOfficialSearch } from "../lib/officialSearch";
 
 export function Programacion() {
   const { user } = useAuth();
   const { isSupervisor, isScopeReady } = useSupervisorScope();
   const { officials: myOfficials, groups, addGroup, updateGroup, removeGroup } = useOfficials();
   const { isReadOnly } = usePeriods();
-  const canManageProgramming = !isSupervisorRole(user?.role);
+  const canManageProgramming = !isReadOnlyRole(user?.role);
   const isReadOnlyView = isReadOnly || !canManageProgramming;
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -47,12 +48,23 @@ export function Programacion() {
     };
   }, []);
 
-  const filteredFuncionarios = searchQuery
-    ? myOfficials.filter((f) =>
-        (f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        f.rut.includes(searchQuery)) && f.status === 'activo'
-      )
-    : [];
+  const filteredFuncionarios = useMemo(() => {
+    const trimmedQuery = searchQuery.trim();
+
+    if (!trimmedQuery) {
+      return [];
+    }
+
+    return myOfficials.filter(
+      (funcionario) =>
+        funcionario.status === "activo" &&
+        matchesOfficialSearch({
+          name: funcionario.name,
+          rut: funcionario.rut,
+          query: trimmedQuery,
+        })
+    );
+  }, [myOfficials, searchQuery]);
 
   const handleCreateGroup = (e: React.MouseEvent) => {
     e.preventDefault();

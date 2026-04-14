@@ -9,6 +9,10 @@ interface ProgrammingSearchBarProps {
   filteredFuncionarios: Funcionario[];
 }
 
+interface ProgrammingSearchNavigationState {
+  selectedOfficialId: number;
+}
+
 export function ProgrammingSearchBar({
   searchQuery,
   setSearchQuery,
@@ -38,10 +42,14 @@ export function ProgrammingSearchBar({
                 <button
                   key={funcionario.id}
                     onClick={() => {
+                      const navigationState: ProgrammingSearchNavigationState = {
+                        selectedOfficialId: funcionario.id,
+                      };
+
                       if (funcionario.groupId) {
-                        navigate(APP_ROUTES.programmingGroup(funcionario.groupId));
+                        navigate(APP_ROUTES.programmingGroup(funcionario.groupId), { state: navigationState });
                       } else {
-                        navigate(APP_ROUTES.programmingUnscheduled);
+                        navigate(APP_ROUTES.programmingUnscheduled, { state: navigationState });
                       }
                     }}
                   className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors border-b border-gray-50 dark:border-gray-700 last:border-none"

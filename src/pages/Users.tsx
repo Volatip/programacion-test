@@ -9,6 +9,24 @@ import { buildApiUrl, fetchWithAuth } from "../lib/api";
 import { ContextualHelpButton } from "../components/contextual-help/ContextualHelpButton";
 import { compareDateValues, sortItems, toggleSort, type SortState } from "../lib/tableSorting";
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: "Administrador",
+  medical_coordinator: "Coordinador Médico",
+  non_medical_coordinator: "Coordinador No Médico",
+  revisor: "Revisor",
+  supervisor: "Supervisor",
+  user: "Usuario",
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  admin: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",
+  medical_coordinator: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+  non_medical_coordinator: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300",
+  revisor: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300",
+  supervisor: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
+  user: "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300",
+};
+
 interface User {
   id: number;
   name: string;
@@ -51,22 +69,6 @@ export function Users() {
     direction: "asc",
   });
   const buttonRefs = useRef<{ [key: number]: HTMLButtonElement | null }>({});
-
-  const roleLabels: Record<string, string> = {
-    admin: "Administrador",
-    medical_coordinator: "Coordinador Médico",
-    non_medical_coordinator: "Coordinador No Médico",
-    supervisor: "Supervisor",
-    user: "Usuario",
-  };
-
-  const roleColors: Record<string, string> = {
-    admin: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300",
-    medical_coordinator: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
-    non_medical_coordinator: "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300",
-    supervisor: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
-    user: "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300",
-  };
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "Nunca";
@@ -218,7 +220,7 @@ export function Users() {
           getValue: (user) => user.email,
         },
         role: {
-          getValue: (user) => roleLabels[user.role] || user.role,
+          getValue: (user) => ROLE_LABELS[user.role] || user.role,
         },
         status: {
           getValue: (user) => user.status,
@@ -228,7 +230,7 @@ export function Users() {
           compare: compareDateValues,
         },
       }),
-    [filteredUsers, roleLabels, sortState],
+    [filteredUsers, sortState],
   );
 
   const toggleMenu = (id: number) => {
@@ -288,8 +290,8 @@ export function Users() {
 
         <UsersTable
           users={sortedUsers}
-          roleLabels={roleLabels}
-          roleColors={roleColors}
+          roleLabels={ROLE_LABELS}
+          roleColors={ROLE_COLORS}
           formatDate={formatDate}
           getInitials={getInitials}
           getRandomColor={getRandomColor}

@@ -11,8 +11,8 @@ export function Layout() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <Sidebar />
       <Header />
-      <main className="pl-64 pt-16 min-h-screen">
-        <div className="w-full px-12 py-8 max-w-[1920px] mx-auto">
+      <main className="min-h-screen pl-64 pt-16">
+        <div className="mx-auto w-full max-w-[1920px] px-6 py-7 xl:px-8 xl:py-8 2xl:px-10 2xl:py-8">
           {isReadOnly && selectedPeriod && (
             <div className="mb-6 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-5 py-4 text-amber-900 dark:text-amber-100 shadow-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

@@ -128,6 +128,31 @@ describe("Funcionarios page", () => {
           observations: "",
           contracts: [],
         },
+        {
+          id: 4,
+          name: "Diana Fin",
+          title: "Enfermera",
+          rut: "44.444.444-4",
+          law: "18834",
+          hours: 22,
+          initial: "DF",
+          color: "bg-violet-600",
+          isScheduled: false,
+          groupId: 1,
+          sisSpecialty: "UPC",
+          lunchTime: "30 min",
+          status: "inactivo",
+          inactiveReason: "Renuncia",
+          terminationDate: "05/04/2026",
+          terminationDateRaw: "2026-04-05T00:00:00Z",
+          holidayDays: 0,
+          administrativeDays: 0,
+          congressDays: 0,
+          breastfeedingTime: 0,
+          lastUpdated: "05/04/2026",
+          observations: "",
+          contracts: [],
+        },
       ],
       addOfficial: vi.fn(),
       removeOfficial: vi.fn(),
@@ -146,7 +171,7 @@ describe("Funcionarios page", () => {
     await screen.findByText("Ana Soto");
 
     const getVisibleNames = () =>
-      Array.from(container.querySelectorAll("tbody tr td:first-child .min-w-0 .font-medium"))
+      Array.from(container.querySelectorAll("tbody tr td:first-child > div > .min-w-0 > div.truncate.text-sm.font-semibold"))
         .map((element) => element.textContent)
         .filter(Boolean);
 
@@ -160,5 +185,26 @@ describe("Funcionarios page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /ordenar por funcionario/i }));
     expect(getVisibleNames()).toEqual(["Ana Soto", "Bruno Díaz", "Carlos Vega"]);
+  });
+
+  it("resets sorting when changing to a status view that hides the active sort column", async () => {
+    const { container } = render(<Funcionarios />);
+
+    await waitFor(() => expect(dismissReasonsListMock).toHaveBeenCalled());
+    await screen.findByText("Carlos Vega");
+
+    const getVisibleNames = () =>
+      Array.from(container.querySelectorAll("tbody tr td:first-child > div > .min-w-0 > div.truncate.text-sm.font-semibold"))
+        .map((element) => element.textContent)
+        .filter(Boolean);
+
+    fireEvent.click(screen.getByRole("button", { name: /inactivos/i }));
+    await screen.findByText("Diana Fin");
+
+    fireEvent.click(screen.getByRole("button", { name: /ordenar por fecha término/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^activos$/i }));
+
+    expect(getVisibleNames()).toEqual(["Ana Soto", "Bruno Díaz", "Carlos Vega"]);
+    expect(screen.queryByRole("button", { name: /ordenar por fecha término/i })).toBeNull();
   });
 });

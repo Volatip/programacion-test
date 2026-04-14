@@ -3,12 +3,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
+from datetime import datetime, UTC
 import logging
+import math
 import pandas as pd
 import io
 import unicodedata
 from api import models, schemas, database, auth
 from api.commission_service import apply_partial_commission_programming, clear_partial_commission_programming, ensure_partial_commission_base_programming, ensure_partial_commission_hours, is_partial_commission_selection
+from api.contract_rules import is_law_15076_without_guard_release
 from api.dismiss_reasons import HIDE_ACTION, normalize_dismiss_start_datetime, resolve_dismiss_selection, resolve_reason_category, validate_dismiss_start_date_requirement
 from api.query_bounds import normalize_limit, normalize_skip
 from api.permissions import MEDICAL_FUNCIONARIO_TITLE, PermissionChecker
@@ -25,12 +28,259 @@ import json
 
 logger = logging.getLogger(__name__)
 
+RRHH_DELETE_DEPENDENCY_ERROR = (
+    "No se puede eliminar el lote seleccionado porque algunos registros ya tienen dependencias "
+    "(programaciones, horarios, asignaciones o auditorías)."
+)
+
 
 def normalize_excel_header(value: object) -> str:
     normalized = unicodedata.normalize("NFKD", str(value).strip().lower())
     without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
     alphanumeric_only = "".join(char if char.isalnum() else " " for char in without_accents)
     return " ".join(alphanumeric_only.split())
+
+
+def normalize_search_text(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "").strip().lower())
+    without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+    return " ".join(without_accents.split())
+
+
+def tokenize_name_search(value: str) -> list[str]:
+    return [token for token in normalize_search_text(value).split(" ") if token]
+
+
+def matches_name_tokens(name: object, tokens: list[str]) -> bool:
+    if not tokens:
+        return True
+
+    normalized_name = normalize_search_text(name)
+    return all(token in normalized_name for token in tokens)
+
+
+def normalize_excel_identifier(value: object) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, int):
+        return str(value)
+
+    if isinstance(value, float):
+        if math.isnan(value):
+            return ""
+        if value.is_integer():
+            return str(int(value))
+
+    text = str(value).strip()
+    if not text or text.lower() in {"none", "nan"}:
+        return ""
+
+    compact = text.replace(" ", "")
+    if compact.endswith(".0") and compact[:-2].isdigit():
+        compact = compact[:-2]
+
+    return compact
+
+
+def normalize_rut_value(value: object) -> str:
+    normalized = normalize_excel_identifier(value)
+    if not normalized:
+        return ""
+    return normalized.replace(".", "")
+
+
+def normalize_dv_value(value: object) -> str:
+    normalized = normalize_excel_identifier(value)
+    if not normalized:
+        return ""
+    return normalized.upper()
+
+
+def resolve_rrhh_period_id(db: Session, period_id: Optional[int]) -> Optional[int]:
+    if period_id:
+        return period_id
+
+    active_period = db.query(models.ProgrammingPeriod).filter(models.ProgrammingPeriod.is_active == True).first()
+    if active_period:
+        return active_period.id
+
+    return None
+
+
+def parse_activity_details(activity: models.Activity) -> dict:
+    if not activity.details:
+        return {}
+
+    try:
+        parsed = json.loads(activity.details)
+    except json.JSONDecodeError:
+        logger.warning("No se pudo parsear details de actividad %s", activity.id, exc_info=True)
+        return {}
+
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def get_latest_rrhh_import_activity(db: Session, *, period_id: Optional[int]) -> tuple[Optional[models.Activity], dict]:
+    query = db.query(models.Activity).filter(models.Activity.type == "rrhh_import_batch")
+
+    for activity in query.order_by(models.Activity.created_at.desc(), models.Activity.id.desc()).all():
+        details = parse_activity_details(activity)
+        if details.get("reverted_at"):
+            continue
+        if period_id is not None and details.get("period_id") != period_id:
+            continue
+        return activity, details
+
+    return None, {}
+
+
+def normalize_datetime_value(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def serialize_datetime_value(value: datetime) -> str:
+    return normalize_datetime_value(value).isoformat()
+
+
+def parse_created_at_value(value: str) -> datetime:
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Debe seleccionar una fecha de creación válida.")
+
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+
+    try:
+        return normalize_datetime_value(datetime.fromisoformat(normalized))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="La fecha de creación seleccionada no es válida.") from exc
+
+
+def require_rrhh_period_id(db: Session, period_id: Optional[int]) -> int:
+    resolved_period_id = resolve_rrhh_period_id(db, period_id)
+    if resolved_period_id is None:
+        raise HTTPException(status_code=400, detail="Debe seleccionar un período de RRHH para esta operación.")
+    return resolved_period_id
+
+
+def get_rrhh_dependency_counts(db: Session, funcionario_ids: set[int]) -> dict[str, int]:
+    if not funcionario_ids:
+        return {
+            "programming_count": 0,
+            "schedule_count": 0,
+            "bindings_count": 0,
+            "audit_count": 0,
+        }
+
+    return {
+        "programming_count": db.query(models.Programming).filter(models.Programming.funcionario_id.in_(funcionario_ids)).count(),
+        "schedule_count": db.query(models.Schedule).filter(models.Schedule.funcionario_id.in_(funcionario_ids)).count(),
+        "bindings_count": db.query(models.UserOfficial).filter(models.UserOfficial.funcionario_id.in_(funcionario_ids)).count(),
+        "audit_count": db.query(models.OfficialAudit).filter(models.OfficialAudit.funcionario_id.in_(funcionario_ids)).count(),
+    }
+
+
+def ensure_rrhh_batch_is_reversible(db: Session, funcionario_ids: set[int]) -> None:
+    dependency_counts = get_rrhh_dependency_counts(db, funcionario_ids)
+    if any(dependency_counts.values()):
+        raise HTTPException(status_code=409, detail=RRHH_DELETE_DEPENDENCY_ERROR)
+
+
+def mark_rrhh_activity_as_reverted(
+    activity: models.Activity,
+    details: dict,
+    *,
+    deleted_ids: set[int],
+    current_user_id: int,
+) -> None:
+    created_ids = {int(value) for value in details.get("created_ids", []) if value is not None}
+    details["reverted_at"] = datetime.now(UTC).isoformat()
+    details["reverted_by_user_id"] = current_user_id
+    details["deleted_ids"] = sorted(created_ids.intersection(deleted_ids))
+    details["deleted_count"] = len(details["deleted_ids"])
+    details["missing_ids"] = sorted(created_ids - deleted_ids)
+    activity.details = json.dumps(details, ensure_ascii=False)
+    activity.description = "Carga de RRHH revertida"
+
+
+def get_rrhh_reversible_batches_by_created_at(db: Session, *, period_id: int) -> list[dict]:
+    funcionarios = db.query(models.Funcionario).filter(
+        models.Funcionario.period_id == period_id,
+        models.Funcionario.created_at.isnot(None),
+    ).order_by(models.Funcionario.created_at.desc(), models.Funcionario.id.desc()).all()
+
+    if not funcionarios:
+        return []
+
+    all_ids = {funcionario.id for funcionario in funcionarios if funcionario.id is not None}
+    dependency_ids: set[int] = set()
+
+    for model in (models.Programming, models.Schedule, models.UserOfficial, models.OfficialAudit):
+        dependency_ids.update(
+            funcionario_id
+            for (funcionario_id,) in db.query(model.funcionario_id).filter(model.funcionario_id.in_(all_ids)).distinct().all()
+            if funcionario_id is not None
+        )
+
+    batches_by_created_at: dict[str, dict] = {}
+    batch_key_by_funcionario_id: dict[int, str] = {}
+
+    for funcionario in funcionarios:
+        if funcionario.id is None or funcionario.created_at is None:
+            continue
+
+        batch_key = serialize_datetime_value(funcionario.created_at)
+        batch = batches_by_created_at.setdefault(
+            batch_key,
+            {
+                "created_at": normalize_datetime_value(funcionario.created_at),
+                "funcionario_ids": set(),
+                "funcionario_count": 0,
+                "tracked_activity_count": 0,
+                "file_names": set(),
+            },
+        )
+        batch["funcionario_ids"].add(funcionario.id)
+        batch["funcionario_count"] += 1
+        batch_key_by_funcionario_id[funcionario.id] = batch_key
+
+    activities = db.query(models.Activity).filter(models.Activity.type == "rrhh_import_batch").order_by(models.Activity.created_at.desc(), models.Activity.id.desc()).all()
+    for activity in activities:
+        details = parse_activity_details(activity)
+        if details.get("reverted_at"):
+            continue
+        if details.get("period_id") != period_id:
+            continue
+
+        created_ids = {int(value) for value in details.get("created_ids", []) if value is not None}
+        matched_keys = {batch_key_by_funcionario_id[created_id] for created_id in created_ids if created_id in batch_key_by_funcionario_id}
+        for batch_key in matched_keys:
+            batch = batches_by_created_at.get(batch_key)
+            if not batch:
+                continue
+            batch["tracked_activity_count"] += 1
+            file_name = details.get("file_name")
+            if isinstance(file_name, str) and file_name.strip():
+                batch["file_names"].add(file_name.strip())
+
+    result: list[dict] = []
+    for batch in batches_by_created_at.values():
+        funcionario_ids = batch["funcionario_ids"]
+        if funcionario_ids.intersection(dependency_ids):
+            continue
+        result.append(
+            {
+                "created_at": batch["created_at"],
+                "funcionario_count": batch["funcionario_count"],
+                "tracked_activity_count": batch["tracked_activity_count"],
+                "file_names": sorted(batch["file_names"]),
+            }
+        )
+
+    return sorted(result, key=lambda batch: (batch["created_at"], batch["funcionario_count"]), reverse=True)
 
 
 def get_period_group_assignments(db: Session, period_id: Optional[int], user_id: Optional[int] = None) -> list[tuple[str, Optional[int]]]:
@@ -176,12 +426,10 @@ async def upload_funcionarios(
 
         created_count = 0
         updated_count = 0
-        
-        # Default to active period if not provided
-        if not period_id:
-            active_period = db.query(models.ProgrammingPeriod).filter(models.ProgrammingPeriod.is_active == True).first()
-            if active_period:
-                period_id = active_period.id
+        created_funcionarios: list[models.Funcionario] = []
+        updated_ids: list[int] = []
+
+        period_id = resolve_rrhh_period_id(db, period_id)
         
         for idx, row in df.iterrows():
             # Prepare raw_data JSON
@@ -213,7 +461,7 @@ async def upload_funcionarios(
                 logger.warning("Se abortó la carga de funcionarios porque no se encontró una columna de RUT válida")
                 break
                 
-            rut_raw = str(row.get(col_rut, '')).replace('.', '').strip()
+            rut_raw = normalize_rut_value(row.get(col_rut, ''))
             
             # DEBUG: Trace why rows are skipped
             if rut_raw == 'None' or not rut_raw:
@@ -238,8 +486,7 @@ async def upload_funcionarios(
                 rut, dv = rut_raw.split('-')
             else:
                 rut = rut_raw
-                dv = str(row.get(col_dv, '')) if col_dv else ''
-                if dv == 'None': dv = ''
+                dv = normalize_dv_value(row.get(col_dv, '')) if col_dv else ''
             
             # Find Name column
             # Prioritize 'Nombre' as standard
@@ -376,6 +623,7 @@ async def upload_funcionarios(
                 existing.raw_data = raw_data_json # Update raw data
                 
                 updated_count += 1
+                updated_ids.append(existing.id)
             else:
                 # Create
                 new_func = models.Funcionario(
@@ -398,8 +646,28 @@ async def upload_funcionarios(
                     raw_data=raw_data_json # Save raw data
                 )
                 db.add(new_func)
+                created_funcionarios.append(new_func)
                 created_count += 1
-        
+        db.flush()
+
+        import_activity = models.Activity(
+            user_id=current_user.id,
+            type="rrhh_import_batch",
+            description="Carga de RRHH",
+            details=json.dumps(
+                {
+                    "file_name": file.filename,
+                    "period_id": period_id,
+                    "created_ids": [funcionario.id for funcionario in created_funcionarios if funcionario.id is not None],
+                    "updated_ids": updated_ids,
+                    "created_count": created_count,
+                    "updated_count": updated_count,
+                },
+                ensure_ascii=False,
+            ),
+        )
+        db.add(import_activity)
+
         db.commit()
         
         msg = "File processed successfully"
@@ -415,6 +683,107 @@ async def upload_funcionarios(
     except Exception:
         logger.exception("Error procesando carga de funcionarios")
         raise HTTPException(status_code=500, detail="Error processing file")
+
+
+@router.delete("/upload/latest")
+def delete_latest_rrhh_import(
+    period_id: Optional[int] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    PermissionChecker.require_admin(current_user, "Solo los administradores pueden revertir cargas de RRHH.")
+
+    target_period_id = resolve_rrhh_period_id(db, period_id)
+    activity, details = get_latest_rrhh_import_activity(db, period_id=target_period_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="No existe una carga reciente de RRHH para revertir.")
+
+    created_ids = [int(value) for value in details.get("created_ids", []) if value is not None]
+    if not created_ids:
+        raise HTTPException(status_code=409, detail="La última carga de RRHH no agregó registros nuevos para eliminar.")
+
+    funcionarios = db.query(models.Funcionario).filter(models.Funcionario.id.in_(created_ids)).all()
+    existing_ids = {funcionario.id for funcionario in funcionarios}
+    ensure_rrhh_batch_is_reversible(db, existing_ids)
+
+    for funcionario in funcionarios:
+        db.delete(funcionario)
+
+    mark_rrhh_activity_as_reverted(activity, details, deleted_ids=existing_ids, current_user_id=current_user.id)
+
+    db.commit()
+
+    return {
+        "message": "Último lote agregado eliminado correctamente.",
+        "deleted_count": len(existing_ids),
+        "missing_count": len(set(created_ids) - existing_ids),
+        "file_name": details.get("file_name"),
+        "period_id": details.get("period_id"),
+    }
+
+
+@router.get("/upload/batches", response_model=schemas.RRHHDeletionBatchListResponse)
+def list_rrhh_deletion_batches(
+    period_id: Optional[int] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    PermissionChecker.require_admin(current_user, "Solo los administradores pueden revertir cargas de RRHH.")
+
+    target_period_id = require_rrhh_period_id(db, period_id)
+    return {"batches": get_rrhh_reversible_batches_by_created_at(db, period_id=target_period_id)}
+
+
+@router.delete("/upload/by-created-at")
+def delete_rrhh_import_by_created_at(
+    created_at: str,
+    period_id: Optional[int] = None,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_active_user),
+):
+    PermissionChecker.require_admin(current_user, "Solo los administradores pueden revertir cargas de RRHH.")
+
+    target_period_id = require_rrhh_period_id(db, period_id)
+    target_created_at = parse_created_at_value(created_at)
+
+    funcionarios = [
+        funcionario
+        for funcionario in db.query(models.Funcionario).filter(
+            models.Funcionario.period_id == target_period_id,
+            models.Funcionario.created_at.isnot(None),
+        ).all()
+        if funcionario.created_at is not None and normalize_datetime_value(funcionario.created_at) == target_created_at
+    ]
+
+    if not funcionarios:
+        raise HTTPException(status_code=404, detail="No existe un lote de RRHH reversible para la fecha seleccionada.")
+
+    funcionario_ids = {funcionario.id for funcionario in funcionarios if funcionario.id is not None}
+    ensure_rrhh_batch_is_reversible(db, funcionario_ids)
+
+    for funcionario in funcionarios:
+        db.delete(funcionario)
+
+    activities = db.query(models.Activity).filter(models.Activity.type == "rrhh_import_batch").order_by(models.Activity.created_at.desc(), models.Activity.id.desc()).all()
+    for activity in activities:
+        details = parse_activity_details(activity)
+        if details.get("reverted_at"):
+            continue
+        if details.get("period_id") != target_period_id:
+            continue
+
+        created_ids = {int(value) for value in details.get("created_ids", []) if value is not None}
+        if created_ids and created_ids.issubset(funcionario_ids):
+            mark_rrhh_activity_as_reverted(activity, details, deleted_ids=funcionario_ids, current_user_id=current_user.id)
+
+    db.commit()
+
+    return {
+        "message": "Lote RRHH eliminado correctamente para la fecha seleccionada.",
+        "deleted_count": len(funcionario_ids),
+        "created_at": serialize_datetime_value(target_created_at),
+        "period_id": target_period_id,
+    }
 
 def format_hours_list(hours_list):
     # hours_list is a list of strings or numbers
@@ -529,6 +898,7 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
                 "breastfeeding_time": contract.breastfeeding_time or 0,
                 "status": contract.status, # Added status
                 "inactive_reason": inactive_reasons.get(contract.rut),
+                "termination_date": contract.dismiss_start_date,
                 "active_status_label": None,
                 "has_partial_commission": False,
                 "future_dismiss_start_date": None,
@@ -564,6 +934,12 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
             if current_future_date is None or contract.dismiss_start_date > current_future_date:
                 grouped_people[key]["future_dismiss_start_date"] = contract.dismiss_start_date
 
+        current_termination_date = grouped_people[key]["termination_date"]
+        if contract.dismiss_start_date is not None and (
+            current_termination_date is None or contract.dismiss_start_date > current_termination_date
+        ):
+            grouped_people[key]["termination_date"] = contract.dismiss_start_date
+
         # Accumulate values
         grouped_people[key]["law_codes"].append(contract.law_code)
         grouped_people[key]["hours"].append(contract.hours_per_week)
@@ -576,7 +952,8 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
         grouped_people[key]["congress_days"] = max(grouped_people[key]["congress_days"], contract.congress_days or 0)
         grouped_people[key]["breastfeeding_time"] = max(grouped_people[key]["breastfeeding_time"], contract.breastfeeding_time or 0)
         
-        grouped_people[key]["lunch_minutes"] = max(grouped_people[key]["lunch_minutes"], contract.lunch_time_minutes or 0)
+        if not is_law_15076_without_guard_release(contract.law_code, contract.observations):
+            grouped_people[key]["lunch_minutes"] = max(grouped_people[key]["lunch_minutes"], contract.lunch_time_minutes or 0)
         
         grouped_people[key]["contracts"].append({
             "id": contract.id,
@@ -613,6 +990,7 @@ def consolidate_contracts(contracts, programmed_details=None, inactive_reasons=N
             "lunch_time_minutes": person["lunch_minutes"],
             "status": person["status"], # Added status
             "inactive_reason": person["inactive_reason"],
+            "termination_date": person["termination_date"],
             "active_status_label": person["active_status_label"],
             "has_future_dismiss_scheduled": bool(person["future_dismiss_start_date"]) and not person["has_partial_commission"],
             "future_dismiss_start_date": person["future_dismiss_start_date"] if not person["has_partial_commission"] else None,
@@ -646,10 +1024,16 @@ def get_programmed_details(db: Session, period_id: int):
         models.Programming.time_unit,
         models.Programming.assigned_status,
         models.Programming.dismiss_partial_hours,
+        models.Programming.review_status,
+        models.Programming.reviewed_at,
+        models.User.name.label("reviewed_by_name"),
         func.coalesce(func.sum(models.ProgrammingItem.assigned_hours), 0.0).label("scheduled_total")
     ).outerjoin(
         models.ProgrammingItem,
         models.ProgrammingItem.programming_id == models.Programming.id
+    ).outerjoin(
+        models.User,
+        models.User.id == models.Programming.reviewed_by_id,
     ).filter(
         models.Programming.period_id == period_id
     ).group_by(
@@ -659,6 +1043,9 @@ def get_programmed_details(db: Session, period_id: int):
         models.Programming.time_unit,
         models.Programming.assigned_status,
         models.Programming.dismiss_partial_hours,
+        models.Programming.review_status,
+        models.Programming.reviewed_at,
+        models.User.name,
     ).all()
 
     for row in programmed_rows:
@@ -675,6 +1062,9 @@ def get_programmed_details(db: Session, period_id: int):
             "scheduled_hours": total,
             "assigned_status": row.assigned_status,
             "dismiss_partial_hours": row.dismiss_partial_hours,
+            "review_status": row.review_status,
+            "reviewed_at": row.reviewed_at,
+            "reviewed_by_name": row.reviewed_by_name,
         }
     return details
 
@@ -898,6 +1288,7 @@ def search_funcionarios(
     )
     effective_user_id = PermissionChecker.resolve_user_scope(current_user, user_id)
     search_term = f"%{q}%"
+    name_search_tokens = tokenize_name_search(q)
 
     # RUT Handling Logic
     clean_q = q.replace(".", "").strip()
@@ -943,7 +1334,12 @@ def search_funcionarios(
     else:
         # Fallback to standard search if not clearly a RUT
         rut_search = models.Funcionario.rut.ilike(search_term)
-         
+
+        if name_search_tokens:
+            base_search = or_(
+                *[models.Funcionario.name.ilike(f"%{token}%") for token in name_search_tokens]
+            )
+          
     final_search_condition = or_(base_search, rut_search)
 
      # If period_id not provided, try to default to active period
@@ -1004,6 +1400,8 @@ def search_funcionarios(
             
         inactive_reasons = get_latest_inactive_reasons_by_rut(db, period_id, linked_ruts)
         consolidated = consolidate_contracts(contracts_with_groups, programmed_details, inactive_reasons)
+        if not is_rut_search and name_search_tokens:
+            consolidated = [item for item in consolidated if matches_name_tokens(item.get("name"), name_search_tokens)]
         return consolidated[:normalized_limit]
 
     # Case 2: Global Search (RRHH Database)
@@ -1028,6 +1426,8 @@ def search_funcionarios(
     
     inactive_reasons = get_latest_inactive_reasons_by_rut(db, period_id, [contract.rut for contract in all_contracts if contract.rut])
     consolidated = consolidate_contracts(all_contracts, programmed_details, inactive_reasons)
+    if not is_rut_search and name_search_tokens:
+        consolidated = [item for item in consolidated if matches_name_tokens(item.get("name"), name_search_tokens)]
     return consolidated[:normalized_limit]
 
 @router.post("/{funcionario_id}/bind")

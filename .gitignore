@@ -21,6 +21,12 @@ dist-ssr
 *.db
 *.sqlite
 *.sqlite3
+*.dump
+*.bak
+*.tmp
+*.temp
+*.orig
+*.rej
 .coverage
 coverage/
 htmlcov/
@@ -34,9 +40,23 @@ __pycache__/
 venv/
 .playwright-cli/
 output/playwright/
+.atl/
 
 # Local archived material outside the public baseline
 NoNecesario/
+backup.sql
+backup.zip
+dist.zip
+/backup*.sql
+/backup*.zip
+/dist*.zip
+/programacion-pre-clean-*.dump
+/programacion-data-only-*.sql
+/programacion-data-only-raw-*.sql
+/programacion-data-only-utf8-*.sql
+
+# Keep versioned SQL templates/scripts
+!api/scripts/sql/*.sql
 
 # Editor directories and files
 .vscode/*

@@ -117,9 +117,11 @@ export function buildPublicAssetPath(assetName: string): string {
 
 export const APP_ROUTES = {
   home: "/",
+  statistics: "/estadisticas",
   login: "/login",
   users: "/usuarios",
   bajas: "/bajas",
+  adminEmail: "/admin/correo",
   contextualHelpAdmin: "/admin/ayudas-contextuales",
   periods: "/periodos",
   rrhh: "/rrhh",

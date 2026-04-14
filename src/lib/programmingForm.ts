@@ -8,6 +8,10 @@ export interface ProgrammingActivityEntry {
   performance: string;
 }
 
+function formatDecimalForInput(value: number): string {
+  return value.toString().replace(".", ",");
+}
+
 export function mapProgrammingItemsToEntries(
   items: ProgrammingItemData[],
   defaultSpecialty: string,
@@ -18,8 +22,8 @@ export function mapProgrammingItemsToEntries(
     id: idx + 1,
     activity: item.activity_name,
     specialty: item.specialty || defaultSpecialty,
-    assignedHours: item.assigned_hours.toString(),
-    performance: item.performance.toString(),
+    assignedHours: formatDecimalForInput(item.assigned_hours),
+    performance: formatDecimalForInput(item.performance),
   }));
 }
 

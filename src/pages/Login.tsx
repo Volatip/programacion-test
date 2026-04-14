@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, Github, Sun, Moon } from 'lucide-react';
 import { formatRut, validateRut } from '../lib/utils';
 import { Modal } from '../components/ui/Modal';
 import { useTheme } from '../hooks/useTheme';
-import { getStoredSession } from '../lib/api';
 import { APP_ROUTES, buildPublicAssetPath } from '../lib/appPaths';
 
 const LOGO_URL = buildPublicAssetPath('logo.png');
@@ -18,9 +17,15 @@ export function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(APP_ROUTES.home, { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleRutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRut(formatRut(e.target.value));
@@ -41,7 +46,6 @@ export function Login() {
 
     try {
       await login(rut, password);
-      const storedUser = JSON.parse(getStoredSession().user || 'null') as { role?: string } | null;
       navigate(APP_ROUTES.home);
     } catch (err) {
       setError('Credenciales inválidas. Por favor intente nuevamente.');

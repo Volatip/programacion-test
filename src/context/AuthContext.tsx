@@ -10,7 +10,7 @@ import {
   type LoginResponse
 } from '../lib/api';
 
-export type UserRole = 'admin' | 'medical_coordinator' | 'non_medical_coordinator' | 'supervisor' | 'user';
+export type UserRole = 'admin' | 'medical_coordinator' | 'non_medical_coordinator' | 'revisor' | 'supervisor' | 'user';
 
 export interface User {
   id: number;

@@ -8,13 +8,13 @@ interface PageHeaderProps {
 
 export const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, children }) => {
   return (
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 transition-colors">
+    <div className="mb-6 flex flex-col justify-between gap-3 transition-colors md:flex-row md:items-center xl:gap-4">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{title}</h1>
-        {subtitle && <div className="text-lg text-gray-500 dark:text-gray-400 mt-1">{subtitle}</div>}
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white xl:text-3xl">{title}</h1>
+        {subtitle && <div className="mt-1 text-base text-gray-500 dark:text-gray-400 xl:text-lg">{subtitle}</div>}
       </div>
       {children && (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 xl:gap-3">
           {children}
         </div>
       )}
