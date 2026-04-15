@@ -121,6 +121,7 @@ export function Programacion() {
   return (
     <div className="space-y-8 w-full">
       <PageHeader
+        pageSlug="programacion"
         title="Programación"
         subtitle="Gestión de grupos y asignación de actividades"
       >

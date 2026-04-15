@@ -338,8 +338,26 @@ export function General() {
   return (
     <div className="space-y-6">
       <PageHeader
+        pageSlug="general"
         title="General"
-        subtitle={isSupervisor && selectedUser ? `${selectedPeriod?.name ?? "Período actual"} · ${selectedUser.name}` : `${selectedPeriod?.name ?? "Período actual"} · Vista consolidada por usuario`}
+        defaultSubtitle="Vista consolidada por usuario"
+        normalizePersistedSubtitle={(subtitle) => {
+          const separatorIndex = subtitle.indexOf(" · ");
+
+          if (separatorIndex === -1) {
+            return subtitle.trim();
+          }
+
+          const suffix = subtitle.slice(separatorIndex + 3).trim();
+          return isSupervisor && selectedUser && suffix === selectedUser.name ? "Vista consolidada por usuario" : suffix;
+        }}
+        subtitleRenderer={(baseSubtitle) => (
+          <p>
+            {isSupervisor && selectedUser
+              ? `${selectedPeriod?.name ?? "Período actual"} · ${selectedUser.name}`
+              : `${selectedPeriod?.name ?? "Período actual"} · ${baseSubtitle}`}
+          </p>
+        )}
       >
         <ContextualHelpButton slug="general" />
         <button

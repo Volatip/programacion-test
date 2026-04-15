@@ -5,6 +5,11 @@ import { Users } from "./Users";
 
 const fetchWithAuthMock = vi.fn();
 const buildApiUrlMock = vi.fn((path: string) => path);
+const useAuthMock = vi.fn();
+
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => useAuthMock(),
+}));
 
 vi.mock("../lib/api", () => ({
   buildApiUrl: (...args: unknown[]) => buildApiUrlMock(...args),
@@ -24,6 +29,7 @@ vi.mock("../components/users/UsersFloatingMenu", () => ({
 describe("Users page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthMock.mockReturnValue({ user: { role: "admin" } });
     vi.spyOn(window, "alert").mockImplementation(() => undefined);
     fetchWithAuthMock.mockResolvedValue({
       ok: true,
@@ -73,6 +79,7 @@ describe("Users page", () => {
 
     await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledWith("/users"));
     await screen.findByText("Ana User");
+    expect(screen.getByText("Gestiona los usuarios del sistema (4 visibles)")).toBeTruthy();
 
     const getVisibleNames = () =>
       Array.from(container.querySelectorAll("tbody tr td:first-child span.font-semibold"))

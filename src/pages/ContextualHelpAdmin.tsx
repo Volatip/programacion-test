@@ -166,6 +166,7 @@ export function ContextualHelpAdmin() {
   return (
     <div className="space-y-6">
       <PageHeader
+        pageSlug="ayudas-contextuales"
         title="Ayudas Contextuales"
         subtitle="Administra el contenido mostrado en los modales de ayuda por página"
       >

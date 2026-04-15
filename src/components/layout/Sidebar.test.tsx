@@ -38,7 +38,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Usuarios")).toBeNull();
   });
 
-  it("places statistics below inicio", () => {
+  it("places statistics after general", () => {
     useAuthMock.mockReturnValue({ user: { role: "supervisor" } });
 
     render(
@@ -48,11 +48,11 @@ describe("Sidebar", () => {
     );
 
     const links = screen.getAllByRole("link");
-    const inicioIndex = links.findIndex((link) => link.textContent?.match(/inicio/i));
+    const generalIndex = links.findIndex((link) => link.textContent?.match(/general/i));
     const estadisticasIndex = links.findIndex((link) => link.textContent?.match(/estadísticas/i));
 
-    expect(inicioIndex).toBeGreaterThanOrEqual(0);
-    expect(estadisticasIndex).toBe(inicioIndex + 1);
+    expect(generalIndex).toBeGreaterThanOrEqual(0);
+    expect(estadisticasIndex).toBe(generalIndex + 1);
   });
 
   it("shows bajas link for admin", () => {

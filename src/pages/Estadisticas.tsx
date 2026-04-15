@@ -64,8 +64,29 @@ const Estadisticas = () => {
   return (
     <div className="space-y-6">
       <PageHeader
+        pageSlug="estadisticas"
         title="Estadísticas"
-        subtitle={isSupervisor && selectedUser ? `${stats?.summary.period_name || 'Período Actual'} · ${selectedUser.name}` : `${stats?.summary.period_name || 'Período Actual'}`}
+        defaultSubtitle=""
+        allowEmptySubtitle
+        normalizePersistedSubtitle={(subtitle) => {
+          const periodName = stats?.summary.period_name || 'Período Actual';
+          const supervisorLabel = selectedUser ? `${periodName} · ${selectedUser.name}` : null;
+
+          if (subtitle.trim() === periodName || (supervisorLabel && subtitle.trim() === supervisorLabel)) {
+            return '';
+          }
+
+          return subtitle.trim();
+        }}
+        subtitleRenderer={(baseSubtitle) => {
+          const periodName = stats?.summary.period_name || 'Período Actual';
+
+          if (isSupervisor && selectedUser) {
+            return <p>{baseSubtitle ? `${baseSubtitle} · ${periodName} · ${selectedUser.name}` : `${periodName} · ${selectedUser.name}`}</p>;
+          }
+
+          return <p>{baseSubtitle ? `${baseSubtitle} · ${periodName}` : periodName}</p>;
+        }}
       >
         <ContextualHelpButton slug="estadisticas" />
       </PageHeader>

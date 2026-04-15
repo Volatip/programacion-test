@@ -169,6 +169,7 @@ describe("Funcionarios page", () => {
 
     await waitFor(() => expect(dismissReasonsListMock).toHaveBeenCalled());
     await screen.findByText("Ana Soto");
+    expect(screen.getByText("Administra los funcionarios (3 total)")).toBeTruthy();
 
     const getVisibleNames = () =>
       Array.from(container.querySelectorAll("tbody tr td:first-child > div > .min-w-0 > div.truncate.text-sm.font-semibold"))

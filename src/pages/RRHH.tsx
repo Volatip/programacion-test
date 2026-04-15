@@ -250,10 +250,11 @@ export function RRHH() {
   return (
     <div className="space-y-6">
       <PageHeader 
+        pageSlug="rrhh"
         title="Recursos Humanos" 
+        defaultSubtitle="Carga y gestión de datos de RRHH"
         subtitle={
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <span>Carga y gestión de datos de RRHH</span>
             <div className="flex items-center gap-2">
               {selectedPeriod && (
                 <span className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-sm font-medium border border-blue-100 dark:border-blue-800">

@@ -114,6 +114,7 @@ describe("General page", () => {
 
     await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledWith("/general?period_id=7"));
     expect(await screen.findByText("Andrea Pérez")).toBeTruthy();
+    expect(screen.getByText("2026-12 · Vista consolidada por usuario")).toBeTruthy();
     expect(screen.getAllByText("Jorge Medrano").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Programado").length).toBeGreaterThan(1);
     expect(screen.getByText("Validado")).toBeTruthy();

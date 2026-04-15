@@ -296,7 +296,7 @@ export function Bajas() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Bajas" subtitle="Administra motivos, comportamiento y subopciones del flujo de baja de funcionarios">
+      <PageHeader pageSlug="bajas" title="Bajas" subtitle="Administra motivos, comportamiento y subopciones del flujo de baja de funcionarios">
         <ContextualHelpButton slug="bajas" />
       </PageHeader>
 

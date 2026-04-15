@@ -9,7 +9,6 @@ export function Sidebar() {
 
   const navItems = [
     { to: APP_ROUTES.home, icon: Home, label: "Inicio", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
-    { to: APP_ROUTES.statistics, icon: ChartColumn, label: "Estadísticas", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
     { to: APP_ROUTES.users, icon: Users, label: "Usuarios", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.bajas, icon: UserMinus, label: "Bajas", roles: ['admin', 'administrador'] },
     { to: APP_ROUTES.adminEmail, icon: Mail, label: "Correo", roles: ['admin', 'administrador'] },
@@ -20,6 +19,7 @@ export function Sidebar() {
     { to: APP_ROUTES.officials, icon: Briefcase, label: "Funcionarios", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
     { to: APP_ROUTES.programming, icon: Calendar, label: "Programación", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
     { to: APP_ROUTES.general, icon: TableProperties, label: "General", roles: ['admin', 'administrador', 'supervisor', 'revisor'] },
+    { to: APP_ROUTES.statistics, icon: ChartColumn, label: "Estadísticas", roles: ['admin', 'administrador', 'medical_coordinator', 'non_medical_coordinator', 'supervisor', 'revisor'] },
   ];
 
   const filteredNavItems = navItems.filter(item => 

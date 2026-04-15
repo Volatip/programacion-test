@@ -241,6 +241,7 @@ export const Periodos: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader
+        pageSlug="periodos"
         title="Períodos de Programación"
         subtitle="Gestiona los períodos académicos y sus estados"
       >

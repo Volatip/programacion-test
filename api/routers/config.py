@@ -22,6 +22,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 PUBLIC_CONFIG_KEYS = {"header_info_text", "home_timeline"}
+AUTHENTICATED_CONFIG_KEY_PREFIXES = ("page_header:",)
 DEFAULT_CONFIG_LIST_LIMIT = 100
 MAX_CONFIG_LIST_LIMIT = 100
 MAX_EXCEL_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
@@ -74,6 +75,10 @@ def normalize_limit(value: int, *, default: int = DEFAULT_CONFIG_LIST_LIMIT, max
 
 def is_public_config_key(key: str) -> bool:
     return key in PUBLIC_CONFIG_KEYS
+
+
+def is_authenticated_config_key(key: str) -> bool:
+    return any(key.startswith(prefix) for prefix in AUTHENTICATED_CONFIG_KEY_PREFIXES)
 
 
 def get_upload_file_size(file: UploadFile) -> Optional[int]:
@@ -271,7 +276,16 @@ def read_config(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_optional_active_user)
 ):
-    if not is_public_config_key(key):
+    if is_public_config_key(key):
+        pass
+    elif is_authenticated_config_key(key):
+        if current_user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    else:
         if current_user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

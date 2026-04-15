@@ -375,8 +375,11 @@ export function Funcionarios() {
   return (
     <div className="space-y-6 relative">
       <PageHeader 
+        pageSlug="funcionarios"
         title="Funcionarios" 
-        subtitle={`${canManageOfficials ? "Administra" : "Consulta"} los funcionarios (${filteredOfficials.length} total)`}
+        defaultSubtitle={`${canManageOfficials ? "Administra" : "Consulta"} los funcionarios`}
+        normalizePersistedSubtitle={(subtitle) => subtitle.replace(/\s*\(\d+ total\)$/u, "").trim()}
+        subtitleRenderer={(baseSubtitle) => <p>{`${baseSubtitle} (${filteredOfficials.length} total)`}</p>}
       >
         <ContextualHelpButton slug="funcionarios" />
       </PageHeader>

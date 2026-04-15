@@ -173,6 +173,7 @@ export function AdminEmailSettings() {
   return (
     <div className="space-y-6">
       <PageHeader
+        pageSlug="admin-correo"
         title="Correo"
         subtitle="Panel exclusivo para administradores. Configura SMTP y la plantilla del aviso por correo usado cuando una programación queda con revisión “Arreglar”."
       >

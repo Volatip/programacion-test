@@ -275,8 +275,11 @@ export function Users() {
   return (
     <div className="space-y-6">
       <PageHeader
+        pageSlug="usuarios"
         title="Usuarios"
-        subtitle={`Gestiona los usuarios del sistema (${filteredUsers.length} visibles)`}
+        defaultSubtitle="Gestiona los usuarios del sistema"
+        normalizePersistedSubtitle={(subtitle) => subtitle.replace(/\s*\(\d+ visibles\)$/u, "").trim()}
+        subtitleRenderer={(baseSubtitle) => <p>{`${baseSubtitle} (${filteredUsers.length} visibles)`}</p>}
       >
         <ContextualHelpButton slug="usuarios" />
       </PageHeader>

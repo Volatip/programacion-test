@@ -207,10 +207,12 @@ export function Carga() {
   return (
     <div className="space-y-6">
       <PageHeader 
+        pageSlug="carga"
         title="Carga de Datos" 
+        defaultSubtitle="Gestión de catálogos"
         subtitle={
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <span>Gestión de catálogos para: <span className="font-medium text-primary dark:text-blue-400">{selectedPeriod?.name}</span></span>
+            <span>Para: <span className="font-medium text-primary dark:text-blue-400">{selectedPeriod?.name}</span></span>
             {isReadOnly && (
               <span className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-sm font-medium border border-amber-200 dark:border-amber-800">
                   <AlertCircle className="w-4 h-4" />
